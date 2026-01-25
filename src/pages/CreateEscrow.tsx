@@ -44,7 +44,7 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export const CreateEscrow: React.FC = () => {
-  const { wallet, updateBalance } = useWallet();
+  const { wallet, refreshBalance } = useWallet();
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -81,9 +81,11 @@ export const CreateEscrow: React.FC = () => {
           amount: values.amount,
           deadline: values.deadline,
           description: values.description,
-        },
-        updateBalance
+        }
       );
+      
+      // Refresh balance after transaction
+      await refreshBalance();
 
       setIsSuccess(true);
       toast({
@@ -188,8 +190,12 @@ export const CreateEscrow: React.FC = () => {
           transition={{ delay: 0.1 }}
           className="glass-card p-4 mb-6 flex items-center gap-3"
         >
-          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <span className="text-lg">{wallet.icon}</span>
+          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+            {wallet.icon.startsWith('data:') || wallet.icon.startsWith('http') ? (
+              <img src={wallet.icon} alt={wallet.name} className="w-6 h-6" />
+            ) : (
+              <span className="text-lg">{wallet.icon}</span>
+            )}
           </div>
           <div className="flex-1">
             <p className="text-sm text-muted-foreground">Available Balance</p>

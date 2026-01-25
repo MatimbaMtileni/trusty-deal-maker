@@ -54,7 +54,7 @@ const formatAddress = (address: string) => {
 
 export const EscrowDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { wallet, updateBalance } = useWallet();
+  const { wallet, refreshBalance } = useWallet();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -116,7 +116,8 @@ export const EscrowDetail: React.FC = () => {
     
     setIsProcessing(true);
     try {
-      await refundEscrow(escrow.id, wallet.address, updateBalance);
+      await refundEscrow(escrow.id, wallet.address);
+      await refreshBalance();
       toast({
         title: 'Refund Successful!',
         description: `${escrow.amount} ADA has been returned to your wallet`,
