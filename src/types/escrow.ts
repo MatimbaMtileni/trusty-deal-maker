@@ -6,7 +6,7 @@ export interface EscrowDatum {
   id: string;
   buyer: string;
   seller: string;
-  amount: number; // in ADA
+  amount: number; // in ADA (lovelace / 1_000_000)
   deadline: Date;
   status: EscrowStatus;
   description?: string;
@@ -36,15 +36,16 @@ export interface WalletInfo {
   name: string;
   icon: string;
   address: string;
-  balance: number;
+  balance: number; // in ADA
   connected: boolean;
+  networkId?: number; // 0 = testnet, 1 = mainnet
 }
 
-export type WalletType = 'nami' | 'lace' | 'eternl';
-
-export interface WalletOption {
-  id: WalletType;
+export interface InstalledWallet {
   name: string;
   icon: string;
-  description: string;
+  version: string;
 }
+
+// Type for wallet options shown in the connect modal
+export type CardanoWalletName = 'nami' | 'lace' | 'eternl' | 'flint' | 'yoroi' | 'typhon' | 'gerowallet';

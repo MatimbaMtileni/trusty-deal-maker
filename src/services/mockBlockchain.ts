@@ -1,16 +1,6 @@
 import { EscrowDatum, EscrowTransaction, CreateEscrowParams, EscrowStatus } from '@/types/escrow';
 
-// Generate mock wallet address
-export const generateMockAddress = (): string => {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let addr = 'addr1';
-  for (let i = 0; i < 50; i++) {
-    addr += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return addr;
-};
-
-// Generate mock transaction hash
+// Generate transaction hash (for local tracking - real txs come from blockchain)
 export const generateTxHash = (): string => {
   const chars = 'abcdef0123456789';
   let hash = '';
@@ -20,15 +10,9 @@ export const generateTxHash = (): string => {
   return hash;
 };
 
-// Simulate network delay
-export const simulateDelay = (ms: number = 1500): Promise<void> => {
-  return new Promise(resolve => setTimeout(resolve, ms));
-};
-
-// Mock escrow storage
+// Escrow storage (in a real app, this would be on-chain data)
 const ESCROWS_KEY = 'cardano_escrows';
 const TRANSACTIONS_KEY = 'cardano_transactions';
-const WALLET_KEY = 'cardano_wallet';
 
 // Get all escrows from storage
 export const getStoredEscrows = (): EscrowDatum[] => {
@@ -64,30 +48,12 @@ export const saveTransactions = (transactions: EscrowTransaction[]): void => {
   localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
 };
 
-// Get wallet from storage
-export const getStoredWallet = () => {
-  const stored = localStorage.getItem(WALLET_KEY);
-  return stored ? JSON.parse(stored) : null;
-};
-
-// Save wallet to storage
-export const saveWallet = (wallet: any): void => {
-  localStorage.setItem(WALLET_KEY, JSON.stringify(wallet));
-};
-
-// Clear wallet from storage
-export const clearWallet = (): void => {
-  localStorage.removeItem(WALLET_KEY);
-};
-
-// Create a new escrow
+// Create a new escrow (stores locally - in production, this submits to blockchain)
 export const createEscrow = async (
   buyerAddress: string,
   params: CreateEscrowParams,
-  updateBalance: (delta: number) => void
+  txHash?: string
 ): Promise<{ escrow: EscrowDatum; transaction: EscrowTransaction }> => {
-  await simulateDelay(2000);
-
   const escrowId = `escrow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const now = new Date();
 
@@ -110,7 +76,7 @@ export const createEscrow = async (
     from: buyerAddress,
     amount: params.amount,
     timestamp: now,
-    txHash: generateTxHash(),
+    txHash: txHash || generateTxHash(),
   };
 
   // Update storage
@@ -122,9 +88,6 @@ export const createEscrow = async (
   transactions.push(transaction);
   saveTransactions(transactions);
 
-  // Deduct from buyer balance
-  updateBalance(-params.amount);
-
   return { escrow, transaction };
 };
 
@@ -132,10 +95,8 @@ export const createEscrow = async (
 export const releaseEscrow = async (
   escrowId: string,
   buyerAddress: string,
-  updateSellerBalance?: (delta: number) => void
+  txHash?: string
 ): Promise<{ escrow: EscrowDatum; transaction: EscrowTransaction }> => {
-  await simulateDelay(2000);
-
   const escrows = getStoredEscrows();
   const escrowIndex = escrows.findIndex(e => e.id === escrowId);
   
@@ -158,7 +119,7 @@ export const releaseEscrow = async (
     to: escrow.seller,
     amount: escrow.amount,
     timestamp: new Date(),
-    txHash: generateTxHash(),
+    txHash: txHash || generateTxHash(),
   };
 
   const transactions = getStoredTransactions();
@@ -172,10 +133,8 @@ export const releaseEscrow = async (
 export const refundEscrow = async (
   escrowId: string,
   requesterAddress: string,
-  updateBalance: (delta: number) => void
+  txHash?: string
 ): Promise<{ escrow: EscrowDatum; transaction: EscrowTransaction }> => {
-  await simulateDelay(2000);
-
   const escrows = getStoredEscrows();
   const escrowIndex = escrows.findIndex(e => e.id === escrowId);
   
@@ -203,15 +162,12 @@ export const refundEscrow = async (
     to: escrow.buyer,
     amount: escrow.amount,
     timestamp: new Date(),
-    txHash: generateTxHash(),
+    txHash: txHash || generateTxHash(),
   };
 
   const transactions = getStoredTransactions();
   transactions.push(transaction);
   saveTransactions(transactions);
-
-  // Return funds to buyer
-  updateBalance(escrow.amount);
 
   return { escrow, transaction };
 };
@@ -234,90 +190,8 @@ export const getEscrowById = (escrowId: string): EscrowDatum | undefined => {
   return escrows.find(e => e.id === escrowId);
 };
 
-// Initialize demo data
-export const initializeDemoData = (buyerAddress: string): void => {
-  const existingEscrows = getStoredEscrows();
-  if (existingEscrows.length > 0) return;
-
-  const demoSeller = generateMockAddress();
-  const now = new Date();
-
-  const demoEscrows: EscrowDatum[] = [
-    {
-      id: 'demo_escrow_1',
-      buyer: buyerAddress,
-      seller: demoSeller,
-      amount: 500,
-      deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // 7 days
-      status: 'active',
-      description: 'Web development services - Frontend milestone',
-      createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
-      updatedAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
-    },
-    {
-      id: 'demo_escrow_2',
-      buyer: demoSeller,
-      seller: buyerAddress,
-      amount: 250,
-      deadline: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000), // 3 days
-      status: 'active',
-      description: 'Smart contract audit service',
-      createdAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000),
-      updatedAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000),
-    },
-    {
-      id: 'demo_escrow_3',
-      buyer: buyerAddress,
-      seller: generateMockAddress(),
-      amount: 1000,
-      deadline: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000), // expired
-      status: 'completed',
-      description: 'NFT artwork commission',
-      createdAt: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000),
-      updatedAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000),
-    },
-  ];
-
-  const demoTransactions: EscrowTransaction[] = [
-    {
-      id: 'demo_tx_1',
-      escrowId: 'demo_escrow_1',
-      type: 'funded',
-      from: buyerAddress,
-      amount: 500,
-      timestamp: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
-      txHash: generateTxHash(),
-    },
-    {
-      id: 'demo_tx_2',
-      escrowId: 'demo_escrow_2',
-      type: 'funded',
-      from: demoSeller,
-      amount: 250,
-      timestamp: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000),
-      txHash: generateTxHash(),
-    },
-    {
-      id: 'demo_tx_3',
-      escrowId: 'demo_escrow_3',
-      type: 'funded',
-      from: buyerAddress,
-      amount: 1000,
-      timestamp: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000),
-      txHash: generateTxHash(),
-    },
-    {
-      id: 'demo_tx_4',
-      escrowId: 'demo_escrow_3',
-      type: 'released',
-      from: buyerAddress,
-      to: demoEscrows[2].seller,
-      amount: 1000,
-      timestamp: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000),
-      txHash: generateTxHash(),
-    },
-  ];
-
-  saveEscrows(demoEscrows);
-  saveTransactions(demoTransactions);
+// Clear all escrow data (for testing)
+export const clearAllData = (): void => {
+  localStorage.removeItem(ESCROWS_KEY);
+  localStorage.removeItem(TRANSACTIONS_KEY);
 };
