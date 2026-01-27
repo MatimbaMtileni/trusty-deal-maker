@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { CalendarIcon, Wallet, ArrowRight, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { CalendarIcon, Wallet, ArrowRight, Loader2, CheckCircle, AlertCircle, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,8 +21,10 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useWallet } from '@/contexts/WalletContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { WalletConnectModal } from '@/components/wallet/WalletConnectModal';
-import { createEscrow } from '@/services/mockBlockchain';
+import { escrowApi } from '@/services/escrowApi';
+import { lucidService, adaToLovelace, generateMockTxHash } from '@/services/lucidService';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -45,9 +47,11 @@ type FormValues = z.infer<typeof formSchema>;
 
 export const CreateEscrow: React.FC = () => {
   const { wallet, refreshBalance } = useWallet();
+  const { user } = useAuth();
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [createdEscrowId, setCreatedEscrowId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -60,7 +64,7 @@ export const CreateEscrow: React.FC = () => {
   });
 
   const onSubmit = async (values: FormValues) => {
-    if (!wallet) return;
+    if (!wallet || !user) return;
 
     if (values.amount > wallet.balance) {
       toast({
@@ -74,19 +78,34 @@ export const CreateEscrow: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const { escrow, transaction } = await createEscrow(
-        wallet.address,
-        {
-          seller: values.sellerAddress,
-          amount: values.amount,
+      let txHash: string;
+
+      // Try to use Lucid for real blockchain transaction
+      if (lucidService.isInitialized() && lucidService.hasScriptConfigured()) {
+        txHash = await lucidService.createEscrow({
+          sellerAddress: values.sellerAddress,
+          amount: adaToLovelace(values.amount),
           deadline: values.deadline,
-          description: values.description,
-        }
-      );
+        });
+      } else {
+        // Fallback to simulated transaction for demo
+        txHash = generateMockTxHash();
+      }
+
+      // Store escrow in database via API
+      const { escrow } = await escrowApi.createEscrow({
+        buyer_address: wallet.address,
+        seller_address: values.sellerAddress,
+        amount: Number(adaToLovelace(values.amount)),
+        deadline: values.deadline.toISOString(),
+        description: values.description,
+        tx_hash: txHash,
+      });
       
       // Refresh balance after transaction
       await refreshBalance();
 
+      setCreatedEscrowId(escrow.id);
       setIsSuccess(true);
       toast({
         title: 'Escrow Created!',
@@ -107,6 +126,34 @@ export const CreateEscrow: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen pt-16">
+        <div className="container mx-auto px-4 py-20">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center max-w-md mx-auto"
+          >
+            <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
+              <LogIn className="h-10 w-10 text-primary" />
+            </div>
+            <h1 className="text-2xl font-bold mb-4">Sign In Required</h1>
+            <p className="text-muted-foreground mb-6">
+              Sign in to create a new escrow contract.
+            </p>
+            <Link to="/auth">
+              <Button className="btn-gradient gap-2">
+                <LogIn className="h-4 w-4" />
+                Sign In
+              </Button>
+            </Link>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
 
   if (!wallet) {
     return (

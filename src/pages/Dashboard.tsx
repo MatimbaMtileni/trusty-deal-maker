@@ -1,28 +1,83 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, Filter, Wallet, LayoutGrid, List } from 'lucide-react';
+import { Plus, Wallet, LayoutGrid, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useWallet } from '@/contexts/WalletContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { EscrowCard } from '@/components/escrow/EscrowCard';
 import { WalletConnectModal } from '@/components/wallet/WalletConnectModal';
-import { getEscrowsForAddress } from '@/services/mockBlockchain';
-import { EscrowDatum, EscrowStatus, UserRole } from '@/types/escrow';
+import { escrowApi } from '@/services/escrowApi';
+import { lovelaceToAda } from '@/services/lucidService';
+import { UserRole } from '@/types/escrow';
+import { useToast } from '@/hooks/use-toast';
 
 type FilterTab = 'all' | 'buyer' | 'seller';
-type StatusFilter = 'all' | EscrowStatus;
+type StatusFilter = 'all' | 'active' | 'completed' | 'refunded';
+
+interface DbEscrow {
+  id: string;
+  buyer_address: string;
+  seller_address: string;
+  amount: number;
+  deadline: string;
+  status: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  buyer_user_id: string | null;
+  seller_user_id: string | null;
+}
+
+// Transform DB escrow to display format
+const transformEscrow = (dbEscrow: DbEscrow) => ({
+  id: dbEscrow.id,
+  buyer: dbEscrow.buyer_address,
+  seller: dbEscrow.seller_address,
+  amount: lovelaceToAda(BigInt(dbEscrow.amount)),
+  deadline: new Date(dbEscrow.deadline),
+  status: dbEscrow.status as 'active' | 'completed' | 'refunded',
+  description: dbEscrow.description || undefined,
+  createdAt: new Date(dbEscrow.created_at),
+  updatedAt: new Date(dbEscrow.updated_at),
+});
 
 export const Dashboard: React.FC = () => {
   const { wallet } = useWallet();
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [roleFilter, setRoleFilter] = useState<FilterTab>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [escrows, setEscrows] = useState<ReturnType<typeof transformEscrow>[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const escrows = useMemo(() => {
-    if (!wallet?.address) return [];
-    return getEscrowsForAddress(wallet.address);
-  }, [wallet?.address]);
+  useEffect(() => {
+    const fetchEscrows = async () => {
+      if (!user) {
+        setEscrows([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data = await escrowApi.getEscrows();
+        setEscrows(data.map(transformEscrow));
+      } catch (error) {
+        console.error('Failed to fetch escrows:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Failed to load escrows',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEscrows();
+  }, [user, toast]);
 
   const filteredEscrows = useMemo(() => {
     return escrows.filter(escrow => {
@@ -52,11 +107,11 @@ export const Dashboard: React.FC = () => {
     };
   }, [escrows, wallet?.address]);
 
-  const getUserRole = (escrow: EscrowDatum): UserRole => {
+  const getUserRole = (escrow: ReturnType<typeof transformEscrow>): UserRole => {
     return escrow.buyer === wallet?.address ? 'buyer' : 'seller';
   };
 
-  if (!wallet) {
+  if (!wallet || !user) {
     return (
       <div className="min-h-screen pt-16">
         <div className="container mx-auto px-4 py-20">
@@ -68,20 +123,43 @@ export const Dashboard: React.FC = () => {
             <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
               <Wallet className="h-10 w-10 text-primary" />
             </div>
-            <h1 className="text-2xl font-bold mb-4">Connect Your Wallet</h1>
+            <h1 className="text-2xl font-bold mb-4">
+              {!user ? 'Sign In Required' : 'Connect Your Wallet'}
+            </h1>
             <p className="text-muted-foreground mb-6">
-              Connect a Cardano wallet to view and manage your escrow contracts.
+              {!user 
+                ? 'Sign in to view and manage your escrow contracts.'
+                : 'Connect a Cardano wallet to view and manage your escrow contracts.'}
             </p>
-            <Button
-              onClick={() => setConnectModalOpen(true)}
-              className="btn-gradient gap-2"
-            >
-              <Wallet className="h-4 w-4" />
-              Connect Wallet
-            </Button>
+            {!user ? (
+              <Link to="/auth">
+                <Button className="btn-gradient gap-2">
+                  Sign In
+                </Button>
+              </Link>
+            ) : (
+              <Button
+                onClick={() => setConnectModalOpen(true)}
+                className="btn-gradient gap-2"
+              >
+                <Wallet className="h-4 w-4" />
+                Connect Wallet
+              </Button>
+            )}
           </motion.div>
         </div>
         <WalletConnectModal open={connectModalOpen} onOpenChange={setConnectModalOpen} />
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen pt-16 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading escrows...</p>
+        </div>
       </div>
     );
   }
