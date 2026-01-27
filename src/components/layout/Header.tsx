@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wallet, ChevronDown, LogOut, Copy, Check } from 'lucide-react';
+import { Wallet, ChevronDown, LogOut, Copy, Check, User, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useWallet } from '@/contexts/WalletContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { WalletConnectModal } from '@/components/wallet/WalletConnectModal';
 import { useToast } from '@/hooks/use-toast';
 
@@ -26,10 +27,12 @@ const formatAda = (amount: number) => {
 };
 
 export const Header: React.FC = () => {
-  const { wallet, disconnect } = useWallet();
+  const { wallet, disconnect: disconnectWallet } = useWallet();
+  const { user, signOut, loading: authLoading } = useAuth();
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleCopyAddress = () => {
@@ -42,6 +45,16 @@ export const Header: React.FC = () => {
       });
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    disconnectWallet();
+    toast({
+      title: 'Signed out',
+      description: 'You have been signed out successfully.',
+    });
+    navigate('/');
   };
 
   const navLinks = [
@@ -83,63 +96,100 @@ export const Header: React.FC = () => {
             ))}
           </nav>
 
-          {/* Wallet Connection */}
-          {wallet ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="glass-card gap-2 border-primary/30 hover:border-primary/50">
-                  <div className="h-6 w-6 rounded overflow-hidden flex items-center justify-center">
-                    {wallet.icon.startsWith('data:') || wallet.icon.startsWith('http') ? (
-                      <img src={wallet.icon} alt={wallet.name} className="w-5 h-5" />
+          {/* Auth & Wallet */}
+          <div className="flex items-center gap-2">
+            {/* Auth Status */}
+            {!authLoading && (
+              user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      <User className="h-4 w-4" />
+                      <span className="hidden sm:inline text-xs truncate max-w-[100px]">
+                        {user.email}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="glass-card">
+                    <div className="px-2 py-1.5">
+                      <p className="text-xs text-muted-foreground">Signed in as</p>
+                      <p className="text-sm font-medium truncate">{user.email}</p>
+                    </div>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive">
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Link to="/auth">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <LogIn className="h-4 w-4" />
+                    <span className="hidden sm:inline">Sign In</span>
+                  </Button>
+                </Link>
+              )
+            )}
+
+            {/* Wallet Connection */}
+            {wallet ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="glass-card gap-2 border-primary/30 hover:border-primary/50">
+                    <div className="h-6 w-6 rounded overflow-hidden flex items-center justify-center">
+                      {wallet.icon.startsWith('data:') || wallet.icon.startsWith('http') ? (
+                        <img src={wallet.icon} alt={wallet.name} className="w-5 h-5" />
+                      ) : (
+                        <span className="text-lg">{wallet.icon}</span>
+                      )}
+                    </div>
+                    <div className="text-left hidden sm:block">
+                      <div className="text-xs text-muted-foreground capitalize">{wallet.name}</div>
+                      <div className="text-sm font-mono">{formatAddress(wallet.address)}</div>
+                    </div>
+                    <div className="text-right hidden sm:block">
+                      <div className="text-sm font-semibold text-primary">{formatAda(wallet.balance)} ₳</div>
+                      {wallet.networkId !== undefined && (
+                        <div className={`text-[10px] ${wallet.networkId === 1 ? 'text-success' : 'text-warning'}`}>
+                          {wallet.networkId === 1 ? 'Mainnet' : 'Testnet'}
+                        </div>
+                      )}
+                    </div>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 glass-card">
+                  <div className="px-2 py-1.5">
+                    <p className="text-sm font-medium">{wallet.name} Wallet</p>
+                    <p className="text-xs text-muted-foreground font-mono">{formatAddress(wallet.address)}</p>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleCopyAddress} className="cursor-pointer">
+                    {copied ? (
+                      <Check className="mr-2 h-4 w-4 text-success" />
                     ) : (
-                      <span className="text-lg">{wallet.icon}</span>
+                      <Copy className="mr-2 h-4 w-4" />
                     )}
-                  </div>
-                  <div className="text-left hidden sm:block">
-                    <div className="text-xs text-muted-foreground capitalize">{wallet.name}</div>
-                    <div className="text-sm font-mono">{formatAddress(wallet.address)}</div>
-                  </div>
-                  <div className="text-right hidden sm:block">
-                    <div className="text-sm font-semibold text-primary">{formatAda(wallet.balance)} ₳</div>
-                    {wallet.networkId !== undefined && (
-                      <div className={`text-[10px] ${wallet.networkId === 1 ? 'text-success' : 'text-warning'}`}>
-                        {wallet.networkId === 1 ? 'Mainnet' : 'Testnet'}
-                      </div>
-                    )}
-                  </div>
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 glass-card">
-                <div className="px-2 py-1.5">
-                  <p className="text-sm font-medium">{wallet.name} Wallet</p>
-                  <p className="text-xs text-muted-foreground font-mono">{formatAddress(wallet.address)}</p>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleCopyAddress} className="cursor-pointer">
-                  {copied ? (
-                    <Check className="mr-2 h-4 w-4 text-success" />
-                  ) : (
-                    <Copy className="mr-2 h-4 w-4" />
-                  )}
-                  Copy Address
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={disconnect} className="cursor-pointer text-destructive focus:text-destructive">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Disconnect
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Button
-              onClick={() => setConnectModalOpen(true)}
-              className="btn-gradient gap-2"
-            >
-              <Wallet className="h-4 w-4" />
-              Connect Wallet
-            </Button>
-          )}
+                    Copy Address
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={disconnectWallet} className="cursor-pointer text-destructive focus:text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Disconnect Wallet
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                onClick={() => setConnectModalOpen(true)}
+                className="btn-gradient gap-2"
+              >
+                <Wallet className="h-4 w-4" />
+                <span className="hidden sm:inline">Connect Wallet</span>
+              </Button>
+            )}
+          </div>
         </div>
       </motion.header>
 

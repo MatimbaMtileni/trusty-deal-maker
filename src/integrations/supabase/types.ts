@@ -14,7 +14,122 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      escrow_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          escrow_id: string
+          from_address: string
+          id: string
+          to_address: string | null
+          tx_hash: string
+          tx_type: Database["public"]["Enums"]["escrow_tx_type"]
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          escrow_id: string
+          from_address: string
+          id?: string
+          to_address?: string | null
+          tx_hash: string
+          tx_type: Database["public"]["Enums"]["escrow_tx_type"]
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          escrow_id?: string
+          from_address?: string
+          id?: string
+          to_address?: string | null
+          tx_hash?: string
+          tx_type?: Database["public"]["Enums"]["escrow_tx_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "escrow_transactions_escrow_id_fkey"
+            columns: ["escrow_id"]
+            isOneToOne: false
+            referencedRelation: "escrows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      escrows: {
+        Row: {
+          amount: number
+          buyer_address: string
+          buyer_user_id: string | null
+          created_at: string
+          datum_hash: string | null
+          deadline: string
+          description: string | null
+          id: string
+          script_address: string | null
+          seller_address: string
+          seller_user_id: string | null
+          status: Database["public"]["Enums"]["escrow_status"]
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          buyer_address: string
+          buyer_user_id?: string | null
+          created_at?: string
+          datum_hash?: string | null
+          deadline: string
+          description?: string | null
+          id?: string
+          script_address?: string | null
+          seller_address: string
+          seller_user_id?: string | null
+          status?: Database["public"]["Enums"]["escrow_status"]
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          buyer_address?: string
+          buyer_user_id?: string | null
+          created_at?: string
+          datum_hash?: string | null
+          deadline?: string
+          description?: string | null
+          id?: string
+          script_address?: string | null
+          seller_address?: string
+          seller_user_id?: string | null
+          status?: Database["public"]["Enums"]["escrow_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+          wallet_address: string | null
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+          wallet_address?: string | null
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+          wallet_address?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +138,8 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      escrow_status: "active" | "completed" | "refunded" | "disputed"
+      escrow_tx_type: "funded" | "released" | "refunded"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +266,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      escrow_status: ["active", "completed", "refunded", "disputed"],
+      escrow_tx_type: ["funded", "released", "refunded"],
+    },
   },
 } as const
