@@ -66,11 +66,12 @@ export const CreateEscrow: React.FC = () => {
   const onSubmit = async (values: FormValues) => {
     if (!wallet || !user) return;
 
+    // Validate against actual wallet balance
     if (values.amount > wallet.balance) {
       toast({
         variant: 'destructive',
         title: 'Insufficient balance',
-        description: `You need ${values.amount} ADA but only have ${wallet.balance} ADA`,
+        description: `You need ${values.amount} ADA but only have ${wallet.balance.toFixed(2)} ADA in your wallet`,
       });
       return;
     }
@@ -78,6 +79,20 @@ export const CreateEscrow: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      // Refresh balance first to get accurate wallet state
+      await refreshBalance();
+      
+      // Re-check balance after refresh
+      if (values.amount > wallet.balance) {
+        toast({
+          variant: 'destructive',
+          title: 'Insufficient balance',
+          description: `You need ${values.amount} ADA but only have ${wallet.balance.toFixed(2)} ADA in your wallet`,
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       let txHash: string;
 
       // Try to use Lucid for real blockchain transaction
@@ -102,7 +117,7 @@ export const CreateEscrow: React.FC = () => {
         tx_hash: txHash,
       });
       
-      // Refresh balance after transaction
+      // Refresh balance after transaction to reflect locked funds
       await refreshBalance();
 
       setCreatedEscrowId(escrow.id);

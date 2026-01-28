@@ -78,11 +78,6 @@ export const Landing: React.FC = () => {
                 Connect Wallet
               </Button>
             )}
-            <Link to="/dashboard">
-              <Button size="lg" variant="outline" className="gap-2 text-lg px-8 glass-card">
-                Explore Demo
-              </Button>
-            </Link>
           </div>
         </motion.div>
 
