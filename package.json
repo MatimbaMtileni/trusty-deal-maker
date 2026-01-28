@@ -50,7 +50,6 @@
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.29.0",
     "input-otp": "^1.4.2",
-    "lucid-cardano": "^0.10.11",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
     "react": "^18.3.1",
@@ -64,7 +63,6 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",
-    "vite-plugin-node-polyfills": "^0.25.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
