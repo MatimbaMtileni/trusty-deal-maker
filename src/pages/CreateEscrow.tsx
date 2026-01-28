@@ -28,11 +28,21 @@ import { lucidService, adaToLovelace, generateMockTxHash } from '@/services/luci
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
+// Validate both bech32 (addr1...) and hex-encoded addresses from CIP-30 wallets
+const isValidCardanoAddress = (address: string): boolean => {
+  // Bech32 mainnet/testnet format
+  if (/^addr1[a-z0-9]{50,}$/i.test(address)) return true;
+  if (/^addr_test1[a-z0-9]{50,}$/i.test(address)) return true;
+  // Hex-encoded address (from CIP-30 wallets) - typically 114+ hex chars
+  if (/^[0-9a-fA-F]{56,}$/.test(address)) return true;
+  return false;
+};
+
 const formSchema = z.object({
   sellerAddress: z
     .string()
     .min(1, 'Seller address is required')
-    .regex(/^addr1[a-z0-9]{50,}$/, 'Invalid Cardano address format'),
+    .refine(isValidCardanoAddress, 'Invalid Cardano address format'),
   amount: z
     .number({ invalid_type_error: 'Amount is required' })
     .min(10, 'Minimum amount is 10 ADA')
