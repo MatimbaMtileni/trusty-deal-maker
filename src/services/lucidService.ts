@@ -4,7 +4,14 @@
 export interface LucidConfig {
   network: 'Mainnet' | 'Preprod' | 'Preview';
   blockfrostApiKey?: string;
+  blockfrostUrl?: string;
 }
+
+// Preprod network configuration
+export const PREPROD_CONFIG: LucidConfig = {
+  network: 'Preprod',
+  blockfrostUrl: 'https://cardano-preprod.blockfrost.io/api/v0',
+};
 
 export interface EscrowParams {
   sellerAddress: string;

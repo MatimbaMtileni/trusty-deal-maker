@@ -84,7 +84,7 @@ export const TransactionTimeline: React.FC<TransactionTimelineProps> = ({ transa
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Tx:</span>
                 <a
-                  href={`https://cardanoscan.io/transaction/${tx.txHash}`}
+                  href={`https://preprod.cardanoscan.io/transaction/${tx.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs font-mono text-primary hover:underline flex items-center gap-1"
