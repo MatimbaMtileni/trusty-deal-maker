@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wallet, ChevronDown, LogOut, Copy, Check, User, LogIn } from 'lucide-react';
+import { Wallet, ChevronDown, LogOut, Copy, Check, User, LogIn, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -61,6 +61,7 @@ export const Header: React.FC = () => {
     { path: '/', label: 'Home' },
     { path: '/dashboard', label: 'Dashboard' },
     { path: '/create', label: 'Create Escrow' },
+    { path: '/analytics', label: 'Analytics', icon: BarChart3 },
   ];
 
   return (

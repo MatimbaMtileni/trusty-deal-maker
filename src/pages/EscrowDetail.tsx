@@ -30,6 +30,9 @@ import {
 import { useWallet } from '@/contexts/WalletContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { TransactionTimeline } from '@/components/escrow/TransactionTimeline';
+import { EscrowChat } from '@/components/escrow/EscrowChat';
+import { EscrowAttachments } from '@/components/escrow/EscrowAttachments';
+import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { escrowApi } from '@/services/escrowApi';
 import { lovelaceToAda, generateMockTxHash } from '@/services/lucidService';
 import { useToast } from '@/hooks/use-toast';
@@ -288,6 +291,13 @@ export const EscrowDetail: React.FC = () => {
                 You are the {userRole === 'buyer' ? '🛒 Buyer' : '💰 Seller'}
               </Badge>
             )}
+
+            {/* QR Share Button */}
+            <EscrowQRShare
+              escrowId={displayEscrow.id}
+              amount={displayEscrow.amount}
+              status={displayEscrow.status}
+            />
           </div>
         </motion.div>
 
@@ -362,6 +372,26 @@ export const EscrowDetail: React.FC = () => {
               </h3>
               <TransactionTimeline transactions={displayTransactions} />
             </div>
+
+            {/* Messaging */}
+            {wallet && (
+              <EscrowChat
+                escrowId={displayEscrow.id}
+                userAddress={wallet.address}
+                buyerAddress={displayEscrow.buyer}
+                sellerAddress={displayEscrow.seller}
+              />
+            )}
+
+            {/* Document Attachments */}
+            {wallet && (
+              <EscrowAttachments
+                escrowId={displayEscrow.id}
+                userAddress={wallet.address}
+                buyerAddress={displayEscrow.buyer}
+                sellerAddress={displayEscrow.seller}
+              />
+            )}
           </motion.div>
 
           {/* Sidebar */}

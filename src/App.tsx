@@ -10,6 +10,7 @@ import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import CreateEscrow from "./pages/CreateEscrow";
 import EscrowDetail from "./pages/EscrowDetail";
+import Analytics from "./pages/Analytics";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -30,6 +31,7 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/create" element={<CreateEscrow />} />
               <Route path="/escrow/:id" element={<EscrowDetail />} />
+              <Route path="/analytics" element={<Analytics />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
