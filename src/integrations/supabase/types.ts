@@ -14,6 +14,79 @@ export type Database = {
   }
   public: {
     Tables: {
+      escrow_attachments: {
+        Row: {
+          created_at: string
+          escrow_id: string
+          file_name: string
+          file_path: string
+          file_size: number
+          file_type: string
+          id: string
+          uploader_address: string
+        }
+        Insert: {
+          created_at?: string
+          escrow_id: string
+          file_name: string
+          file_path: string
+          file_size: number
+          file_type: string
+          id?: string
+          uploader_address: string
+        }
+        Update: {
+          created_at?: string
+          escrow_id?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          uploader_address?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "escrow_attachments_escrow_id_fkey"
+            columns: ["escrow_id"]
+            isOneToOne: false
+            referencedRelation: "escrows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      escrow_messages: {
+        Row: {
+          content: string
+          created_at: string
+          escrow_id: string
+          id: string
+          sender_address: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          escrow_id: string
+          id?: string
+          sender_address: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          escrow_id?: string
+          id?: string
+          sender_address?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "escrow_messages_escrow_id_fkey"
+            columns: ["escrow_id"]
+            isOneToOne: false
+            referencedRelation: "escrows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       escrow_transactions: {
         Row: {
           amount: number
@@ -70,6 +143,7 @@ export type Database = {
           seller_user_id: string | null
           status: Database["public"]["Enums"]["escrow_status"]
           updated_at: string
+          view_count: number | null
         }
         Insert: {
           amount: number
@@ -85,6 +159,7 @@ export type Database = {
           seller_user_id?: string | null
           status?: Database["public"]["Enums"]["escrow_status"]
           updated_at?: string
+          view_count?: number | null
         }
         Update: {
           amount?: number
@@ -100,6 +175,7 @@ export type Database = {
           seller_user_id?: string | null
           status?: Database["public"]["Enums"]["escrow_status"]
           updated_at?: string
+          view_count?: number | null
         }
         Relationships: []
       }
