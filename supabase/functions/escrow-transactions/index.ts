@@ -31,7 +31,9 @@ const SAFE_ERRORS = {
 function isValidCardanoAddress(address: string): boolean {
   // Bech32 address validation for Cardano (addr or addr_test prefix)
   const bech32Pattern = /^(addr1|addr_test1)[a-z0-9]{53,}$/i;
-  return bech32Pattern.test(address);
+  // Hex-encoded address validation (56+ characters, hex only)
+  const hexPattern = /^[a-fA-F0-9]{56,}$/;
+  return bech32Pattern.test(address) || hexPattern.test(address);
 }
 
 function isValidTxHash(hash: string): boolean {
