@@ -120,6 +120,16 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setWallet(info);
       localStorage.setItem(WALLET_STORAGE_KEY, walletName);
 
+      // If the user is authenticated with Supabase, link wallet to their profile
+      try {
+        // Dynamically import to avoid circular dependency during module load
+        const { escrowApi } = await import('@/services/escrowApi');
+        await escrowApi.updateProfileWallet(info.address);
+      } catch (err) {
+        // Not critical — user may not be signed in
+        console.debug('Could not update profile wallet:', err);
+      }
+
       const networkName = networkId === 1 ? 'Mainnet' : 'Testnet';
       toast.success(`Connected to ${walletName}`, {
         description: `Network: ${networkName} | Balance: ${balanceAda.toLocaleString()} ₳`,
