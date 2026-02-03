@@ -44,7 +44,8 @@ export interface WalletInfo {
 export interface InstalledWallet {
   name: string;
   icon: string;
-  version: string;
+  apiVersion: string;
+  isEnabled: boolean;
 }
 
 // Type for wallet options shown in the connect modal

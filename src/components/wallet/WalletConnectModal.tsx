@@ -88,7 +88,7 @@ export const WalletConnectModal: React.FC<WalletConnectModalProps> = ({ open, on
                       {wallet.name}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      v{wallet.version}
+                      v{wallet.apiVersion}
                     </p>
                   </div>
                   <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
