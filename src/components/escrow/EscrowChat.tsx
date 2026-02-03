@@ -159,15 +159,7 @@ export const EscrowChat: React.FC<EscrowChatProps> = ({
         const inserted = insertedRows[0] as Message;
         setMessages((prev) => prev.map((m) => (m.id === tempId ? inserted : m)));
 
-        // Also update escrow metadata so recipient sees activity in lists immediately
-        try {
-          await supabase
-            .from('escrows')
-            .update({ last_message_preview: inserted.content, last_message_at: inserted.created_at })
-            .eq('id', escrowId);
-        } catch (escErr) {
-          console.debug('Could not update escrow last_message:', escErr);
-        }
+        // Escrow updated_at will be tracked via trigger if needed
       }
 
       // Trigger email notification for the other participant
