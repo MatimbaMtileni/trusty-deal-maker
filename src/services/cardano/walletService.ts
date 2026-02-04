@@ -9,6 +9,7 @@ import {
 } from './types';
 import { validateWalletNetwork, TARGET_NETWORK, lovelaceToAda } from './networkGuard';
 import { blockchainService } from './blockchainService';
+import { hexToBech32 } from './addressUtils';
 
 /** Supported wallet keys */
 const SUPPORTED_WALLETS = [
@@ -114,7 +115,10 @@ class WalletService {
       const unusedAddresses = await api.getUnusedAddresses();
       const changeAddress = await api.getChangeAddress();
       
-      const address = usedAddresses[0] || unusedAddresses[0] || changeAddress;
+      const rawAddress = usedAddresses[0] || unusedAddresses[0] || changeAddress;
+      
+      // Convert hex address to bech32 for display
+      const address = hexToBech32(rawAddress);
       
       if (!address) {
         throw new Error('No address found in wallet');
@@ -124,7 +128,8 @@ class WalletService {
       let stakeAddress: string | null = null;
       try {
         const rewardAddresses = await api.getRewardAddresses();
-        stakeAddress = rewardAddresses[0] || null;
+        // Convert stake address to bech32 as well
+        stakeAddress = rewardAddresses[0] ? hexToBech32(rewardAddresses[0]) : null;
       } catch {
         // Some wallets don't support this
       }
