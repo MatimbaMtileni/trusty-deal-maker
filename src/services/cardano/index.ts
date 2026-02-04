@@ -18,6 +18,15 @@ export {
   formatAda,
 } from './networkGuard';
 
+// Address utilities
+export {
+  hexToBech32,
+  bech32ToHex,
+  truncateAddress,
+  normalizeAddress,
+  isAddressForNetwork,
+} from './addressUtils';
+
 // Blockchain service
 export { blockchainService } from './blockchainService';
 
