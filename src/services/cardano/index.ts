@@ -27,6 +27,32 @@ export {
   isAddressForNetwork,
 } from './addressUtils';
 
+// Script registry & verification
+export {
+  ESCROW_SCRIPTS,
+  getActiveScript,
+  verifyScriptAddress,
+  verifyScriptHash,
+  getEscrowScriptAddress,
+  getEscrowScriptHash,
+  isScriptDeployed,
+  validateTransactionScript,
+  getScriptVerificationStatus,
+  type ScriptDeployment,
+} from './scriptRegistry';
+
+// Datum builder
+export {
+  createEscrowDatum,
+  extractPubKeyHash,
+  serializeDatum,
+  serializeRedeemer,
+  hashDatum,
+  validateDatum,
+  parseDeadline,
+  EscrowAction,
+} from './datumBuilder';
+
 // Blockchain service
 export { blockchainService } from './blockchainService';
 

@@ -2,6 +2,7 @@
 // Wallet Service - CIP-30 Wallet Management with Network Safety
 // ============================================================================
 
+import { decode } from 'cbor-x';
 import { 
   CIP30WalletAPI, 
   InstalledWallet, 
@@ -301,49 +302,39 @@ class WalletService {
   private parseBalanceCbor(cbor: string): bigint {
     // CIP-30 getBalance() returns CBOR-encoded Value
     // Value = coin / [coin, multiasset]
-    // We need to decode CBOR to extract the lovelace amount
     try {
+      // Convert hex string to Uint8Array
       const bytes = new Uint8Array(cbor.length / 2);
       for (let i = 0; i < cbor.length; i += 2) {
         bytes[i / 2] = parseInt(cbor.substr(i, 2), 16);
       }
       
-      // Simple CBOR parsing for our use case
-      // First byte tells us the type
-      const firstByte = bytes[0];
+      // Use cbor-x to decode properly
+      const decoded = decode(bytes);
       
-      // Major type 0: unsigned integer
-      if (firstByte <= 0x17) {
-        return BigInt(firstByte);
-      } else if (firstByte === 0x18) {
-        return BigInt(bytes[1]);
-      } else if (firstByte === 0x19) {
-        return BigInt((bytes[1] << 8) | bytes[2]);
-      } else if (firstByte === 0x1a) {
-        return BigInt(
-          (bytes[1] << 24) | (bytes[2] << 16) | (bytes[3] << 8) | bytes[4]
-        );
-      } else if (firstByte === 0x1b) {
-        // 64-bit integer
-        let value = 0n;
-        for (let i = 1; i <= 8; i++) {
-          value = (value << 8n) | BigInt(bytes[i]);
-        }
-        return value;
+      // Value can be:
+      // - Just a number (coin only, no multi-assets)
+      // - An array [coin, multiasset] where coin is the lovelace amount
+      if (typeof decoded === 'number') {
+        return BigInt(decoded);
       }
       
-      // Major type 4: array (for [coin, multiasset])
-      if ((firstByte & 0xe0) === 0x80) {
-        // It's an array, first element is lovelace
-        // Skip array header and parse first element
-        const arrayLen = firstByte & 0x1f;
-        if (arrayLen >= 1) {
-          // Recursively parse starting from byte 1
-          const remaining = cbor.slice(2);
-          return this.parseBalanceCbor(remaining);
+      if (typeof decoded === 'bigint') {
+        return decoded;
+      }
+      
+      if (Array.isArray(decoded)) {
+        // First element is the lovelace amount
+        const lovelace = decoded[0];
+        if (typeof lovelace === 'number') {
+          return BigInt(lovelace);
+        }
+        if (typeof lovelace === 'bigint') {
+          return lovelace;
         }
       }
       
+      console.warn('[Wallet] Unexpected CBOR structure:', decoded);
       return 0n;
     } catch (error) {
       console.warn('[Wallet] CBOR parse error, falling back to 0:', error);
