@@ -1,9 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, ExternalLink, AlertCircle, Download } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Wallet, ExternalLink, AlertCircle, Download, CheckCircle2, Shield } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import { useWallet } from '@/contexts/WalletContext';
+import { TARGET_NETWORK } from '@/services/cardano';
 
 const WALLET_DOWNLOAD_URLS: Record<string, string> = {
   nami: 'https://namiwallet.io',
@@ -13,6 +14,7 @@ const WALLET_DOWNLOAD_URLS: Record<string, string> = {
   gerowallet: 'https://gerowallet.io',
   typhon: 'https://typhonwallet.io',
   yoroi: 'https://yoroi-wallet.com',
+  vespr: 'https://vespr.xyz',
 };
 
 const POPULAR_WALLETS = ['nami', 'lace', 'eternl', 'flint', 'yoroi'];
@@ -41,6 +43,9 @@ export const WalletConnectModal: React.FC<WalletConnectModalProps> = ({ open, on
     name => !installedWalletNames.includes(name)
   );
 
+  const networkLabel = TARGET_NETWORK.charAt(0).toUpperCase() + TARGET_NETWORK.slice(1);
+  const isTestnet = TARGET_NETWORK !== 'mainnet';
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="glass-card border-border/50 sm:max-w-md">
@@ -49,11 +54,32 @@ export const WalletConnectModal: React.FC<WalletConnectModalProps> = ({ open, on
             <Wallet className="h-5 w-5 text-primary" />
             Connect Wallet
           </DialogTitle>
+          <DialogDescription className="flex items-center gap-2 pt-1">
+            <Shield className="h-3.5 w-3.5" />
+            CIP-30 compliant wallet connection
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        {/* Network Badge */}
+        <div className="flex items-center gap-2">
+          <Badge 
+            variant={isTestnet ? "secondary" : "default"}
+            className={isTestnet ? "bg-amber-500/10 text-amber-500 border-amber-500/30" : ""}
+          >
+            <span className="relative flex h-2 w-2 mr-1.5">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isTestnet ? 'bg-amber-400' : 'bg-green-400'}`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${isTestnet ? 'bg-amber-500' : 'bg-green-500'}`} />
+            </span>
+            {networkLabel}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            Your wallet must be on this network
+          </span>
+        </div>
+
+        <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Connect your Cardano wallet to interact with escrow contracts on the blockchain.
+            Select a CIP-30 compatible wallet to interact with escrow smart contracts.
           </p>
 
           {/* Installed Wallets */}
@@ -141,10 +167,15 @@ export const WalletConnectModal: React.FC<WalletConnectModalProps> = ({ open, on
             </motion.div>
           )}
 
-          <div className="pt-2 border-t border-border/50">
-            <p className="text-xs text-muted-foreground text-center">
-              Make sure you're connected to the correct network (Mainnet or Testnet) in your wallet.
-            </p>
+          <div className="pt-3 border-t border-border/50 space-y-2">
+            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+              <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 text-green-500 shrink-0" />
+              <span>Your wallet will request permission to connect</span>
+            </div>
+            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+              <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 text-green-500 shrink-0" />
+              <span>We only read your address and balance—never your private keys</span>
+            </div>
           </div>
         </div>
       </DialogContent>

@@ -294,17 +294,54 @@ class WalletService {
   // -------------------------------------------------------------------------
 
   private parseBalanceCbor(cbor: string): bigint {
-    // CBOR balance is either:
-    // - A simple integer (lovelace only)
-    // - A map with lovelace and native assets
-    // For simplicity, we parse the hex as a big integer when it's simple
+    // CIP-30 getBalance() returns CBOR-encoded Value
+    // Value = coin / [coin, multiasset]
+    // We need to decode CBOR to extract the lovelace amount
     try {
-      // If it's a valid hex number, parse directly
-      if (/^[0-9a-fA-F]+$/.test(cbor)) {
-        return BigInt('0x' + cbor);
+      const bytes = new Uint8Array(cbor.length / 2);
+      for (let i = 0; i < cbor.length; i += 2) {
+        bytes[i / 2] = parseInt(cbor.substr(i, 2), 16);
       }
+      
+      // Simple CBOR parsing for our use case
+      // First byte tells us the type
+      const firstByte = bytes[0];
+      
+      // Major type 0: unsigned integer
+      if (firstByte <= 0x17) {
+        return BigInt(firstByte);
+      } else if (firstByte === 0x18) {
+        return BigInt(bytes[1]);
+      } else if (firstByte === 0x19) {
+        return BigInt((bytes[1] << 8) | bytes[2]);
+      } else if (firstByte === 0x1a) {
+        return BigInt(
+          (bytes[1] << 24) | (bytes[2] << 16) | (bytes[3] << 8) | bytes[4]
+        );
+      } else if (firstByte === 0x1b) {
+        // 64-bit integer
+        let value = 0n;
+        for (let i = 1; i <= 8; i++) {
+          value = (value << 8n) | BigInt(bytes[i]);
+        }
+        return value;
+      }
+      
+      // Major type 4: array (for [coin, multiasset])
+      if ((firstByte & 0xe0) === 0x80) {
+        // It's an array, first element is lovelace
+        // Skip array header and parse first element
+        const arrayLen = firstByte & 0x1f;
+        if (arrayLen >= 1) {
+          // Recursively parse starting from byte 1
+          const remaining = cbor.slice(2);
+          return this.parseBalanceCbor(remaining);
+        }
+      }
+      
       return 0n;
-    } catch {
+    } catch (error) {
+      console.warn('[Wallet] CBOR parse error, falling back to 0:', error);
       return 0n;
     }
   }
