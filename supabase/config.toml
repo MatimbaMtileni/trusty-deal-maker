@@ -1,1 +1,4 @@
 project_id = "jqdrthsjqckptwbalpuj"
+ 
+ [functions.cardano-tx-builder]
+ verify_jwt = false

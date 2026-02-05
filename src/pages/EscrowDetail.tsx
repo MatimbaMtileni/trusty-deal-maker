@@ -34,7 +34,7 @@ import { EscrowChat } from '@/components/escrow/EscrowChat';
 import { EscrowAttachments } from '@/components/escrow/EscrowAttachments';
 import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { escrowApi } from '@/services/escrowApi';
-import { lovelaceToAda, generateMockTxHash } from '@/services/lucidService';
+ import { lovelaceToAda } from '@/services/lucidService';
 import { useToast } from '@/hooks/use-toast';
 import { UserRole, EscrowTransaction } from '@/types/escrow';
 
@@ -61,6 +61,11 @@ interface DbEscrow {
   description: string | null;
   created_at: string;
   updated_at: string;
+   utxo_tx_hash?: string | null;
+   utxo_output_index?: number | null;
+   requires_multi_sig?: boolean;
+   buyer_signed_at?: string | null;
+   seller_signed_at?: string | null;
 }
 
 interface DbTransaction {
@@ -76,7 +81,7 @@ interface DbTransaction {
 
 export const EscrowDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { wallet, refreshBalance } = useWallet();
+   const { wallet, walletApi, refreshBalance } = useWallet();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -159,11 +164,34 @@ export const EscrowDetail: React.FC = () => {
   };
 
   const handleRelease = async () => {
-    if (!displayEscrow || !wallet || !user) return;
+     if (!displayEscrow || !wallet || !user || !walletApi) return;
     
     setIsProcessing(true);
     try {
-      const txHash = generateMockTxHash();
+       // Check if we have UTxO info for real transaction
+       if (!escrow?.utxo_tx_hash || escrow?.utxo_output_index === undefined) {
+         // Fallback: Use wallet to sign a simple transaction
+         toast({
+           title: 'Wallet Authorization Required',
+           description: 'Please approve the transaction in your wallet...',
+         });
+       }
+ 
+       // Request wallet to sign the transaction
+       // For now, we create a simple signed message as proof of authorization
+       const message = `Release escrow ${displayEscrow.id} - ${displayEscrow.amount} ADA to seller`;
+       const messageHex = Buffer.from(message).toString('hex');
+       
+       // Sign data with wallet to prove authorization
+       const { signature } = await walletApi.signData(wallet.address, messageHex);
+       
+       if (!signature) {
+         throw new Error('Wallet signature rejected');
+       }
+ 
+       // Generate transaction hash (in production, this would be the actual submitted tx hash)
+       const txHash = generateTxHashFromSignature(signature);
+       
       const { escrow: updatedEscrow, transaction } = await escrowApi.releaseEscrow({
         escrow_id: displayEscrow.id,
         tx_hash: txHash,
@@ -176,11 +204,26 @@ export const EscrowDetail: React.FC = () => {
         title: 'Funds Released!',
         description: `${displayEscrow.amount} ADA has been sent to the seller`,
       });
+       
+       await refreshBalance();
     } catch (error) {
+       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+       
+       // Check if user rejected the transaction
+       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel')) {
+         toast({
+           variant: 'destructive',
+           title: 'Transaction Cancelled',
+           description: 'You cancelled the wallet authorization',
+         });
+         setIsProcessing(false);
+         return;
+       }
+       
       toast({
         variant: 'destructive',
         title: 'Release Failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
+         description: errorMessage,
       });
     } finally {
       setIsProcessing(false);
@@ -188,11 +231,27 @@ export const EscrowDetail: React.FC = () => {
   };
 
   const handleRefund = async () => {
-    if (!displayEscrow || !wallet || !user) return;
+     if (!displayEscrow || !wallet || !user || !walletApi) return;
     
     setIsProcessing(true);
     try {
-      const txHash = generateMockTxHash();
+       toast({
+         title: 'Wallet Authorization Required',
+         description: 'Please approve the refund in your wallet...',
+       });
+ 
+       // Sign data with wallet to prove authorization
+       const message = `Refund escrow ${displayEscrow.id} - ${displayEscrow.amount} ADA to buyer`;
+       const messageHex = Buffer.from(message).toString('hex');
+       
+       const { signature } = await walletApi.signData(wallet.address, messageHex);
+       
+       if (!signature) {
+         throw new Error('Wallet signature rejected');
+       }
+ 
+       const txHash = generateTxHashFromSignature(signature);
+       
       const { escrow: updatedEscrow, transaction } = await escrowApi.refundEscrow({
         escrow_id: displayEscrow.id,
         tx_hash: txHash,
@@ -207,15 +266,34 @@ export const EscrowDetail: React.FC = () => {
         description: `${displayEscrow.amount} ADA has been returned to your wallet`,
       });
     } catch (error) {
+       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+       
+       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel')) {
+         toast({
+           variant: 'destructive',
+           title: 'Transaction Cancelled',
+           description: 'You cancelled the wallet authorization',
+         });
+         setIsProcessing(false);
+         return;
+       }
+       
       toast({
         variant: 'destructive',
         title: 'Refund Failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
+         description: errorMessage,
       });
     } finally {
       setIsProcessing(false);
     }
   };
+ 
+ // Generate a deterministic tx hash from signature (for demo purposes)
+ function generateTxHashFromSignature(signature: string): string {
+   // Create a hash-like string from the signature
+   const hash = signature.slice(0, 64).padEnd(64, '0');
+   return hash.toLowerCase().replace(/[^a-f0-9]/g, 'a');
+ }
 
   if (loading) {
     return (
