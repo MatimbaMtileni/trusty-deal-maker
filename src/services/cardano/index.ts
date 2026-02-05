@@ -69,3 +69,25 @@ export {
   type TrackingOptions,
   type ConfirmationLevel,
 } from './txConfirmation';
+ 
+ // UTxO state sync
+ export {
+   utxoSyncService,
+   syncEscrowState,
+   syncAllActiveEscrows,
+   startPeriodicSync,
+   type OnChainEscrowState,
+   type SyncResult,
+ } from './utxoSync';
+ 
+ // Multi-signature escrow
+ export {
+   multiSigService,
+   getMultiSigStatus,
+   recordSignature,
+   isReleaseAuthorized,
+   enableMultiSig,
+   clearSignatures,
+   type MultiSigStatus,
+   type SignatureResult,
+ } from './multiSig';

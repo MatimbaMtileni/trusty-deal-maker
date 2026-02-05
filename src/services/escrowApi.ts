@@ -9,6 +9,7 @@ interface CreateEscrowParams {
   deadline: string;
   description?: string;
   tx_hash: string;
+   requires_multi_sig?: boolean;
 }
 
 interface EscrowActionParams {
@@ -16,6 +17,11 @@ interface EscrowActionParams {
   tx_hash: string;
 }
 
+ interface SignEscrowParams {
+   escrow_id: string;
+   signer_address: string;
+ }
+ 
 export const escrowApi = {
   async createEscrow(params: CreateEscrowParams) {
     const { data: { session } } = await supabase.auth.getSession();
@@ -89,6 +95,54 @@ export const escrowApi = {
     return response.json();
   },
 
+   async signEscrow(params: SignEscrowParams) {
+     const { data: { session } } = await supabase.auth.getSession();
+     if (!session) throw new Error('Not authenticated');
+ 
+     const response = await fetch(FUNCTION_URL, {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json',
+         'Authorization': `Bearer ${session.access_token}`,
+       },
+       body: JSON.stringify({
+         action: 'sign',
+         ...params,
+       }),
+     });
+ 
+     if (!response.ok) {
+       const error = await response.json();
+       throw new Error(error.error || 'Failed to sign escrow');
+     }
+ 
+     return response.json();
+   },
+ 
+   async getMultiSigStatus(escrowId: string) {
+     const { data: { session } } = await supabase.auth.getSession();
+     if (!session) throw new Error('Not authenticated');
+ 
+     const response = await fetch(FUNCTION_URL, {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json',
+         'Authorization': `Bearer ${session.access_token}`,
+       },
+       body: JSON.stringify({
+         action: 'get_multisig_status',
+         escrow_id: escrowId,
+       }),
+     });
+ 
+     if (!response.ok) {
+       const error = await response.json();
+       throw new Error(error.error || 'Failed to get multi-sig status');
+     }
+ 
+     return response.json();
+   },
+ 
   async getEscrows() {
     const { data, error } = await supabase
       .from('escrows')

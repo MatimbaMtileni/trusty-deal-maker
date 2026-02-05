@@ -132,49 +132,70 @@ export type Database = {
         Row: {
           amount: number
           buyer_address: string
+          buyer_signed_at: string | null
           buyer_user_id: string | null
           created_at: string
           datum_hash: string | null
           deadline: string
           description: string | null
           id: string
+          last_synced_at: string | null
+          on_chain_status: string | null
+          requires_multi_sig: boolean
           script_address: string | null
           seller_address: string
+          seller_signed_at: string | null
           seller_user_id: string | null
           status: Database["public"]["Enums"]["escrow_status"]
           updated_at: string
+          utxo_output_index: number | null
+          utxo_tx_hash: string | null
           view_count: number | null
         }
         Insert: {
           amount: number
           buyer_address: string
+          buyer_signed_at?: string | null
           buyer_user_id?: string | null
           created_at?: string
           datum_hash?: string | null
           deadline: string
           description?: string | null
           id?: string
+          last_synced_at?: string | null
+          on_chain_status?: string | null
+          requires_multi_sig?: boolean
           script_address?: string | null
           seller_address: string
+          seller_signed_at?: string | null
           seller_user_id?: string | null
           status?: Database["public"]["Enums"]["escrow_status"]
           updated_at?: string
+          utxo_output_index?: number | null
+          utxo_tx_hash?: string | null
           view_count?: number | null
         }
         Update: {
           amount?: number
           buyer_address?: string
+          buyer_signed_at?: string | null
           buyer_user_id?: string | null
           created_at?: string
           datum_hash?: string | null
           deadline?: string
           description?: string | null
           id?: string
+          last_synced_at?: string | null
+          on_chain_status?: string | null
+          requires_multi_sig?: boolean
           script_address?: string | null
           seller_address?: string
+          seller_signed_at?: string | null
           seller_user_id?: string | null
           status?: Database["public"]["Enums"]["escrow_status"]
           updated_at?: string
+          utxo_output_index?: number | null
+          utxo_tx_hash?: string | null
           view_count?: number | null
         }
         Relationships: []
