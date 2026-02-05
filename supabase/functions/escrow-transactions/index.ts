@@ -25,6 +25,8 @@ const SAFE_ERRORS = {
   SERVER_ERROR: "An error occurred. Please try again.",
   DUPLICATE_ESCROW: "An escrow with these details already exists",
   INVALID_REFERENCE: "Invalid reference data",
+   MULTI_SIG_REQUIRED: "Both buyer and seller must sign to release funds",
+   ALREADY_SIGNED: "You have already signed this escrow",
 };
 
 // Validation helpers
@@ -77,6 +79,7 @@ interface CreateEscrowRequest {
   deadline: string;
   description?: string;
   tx_hash: string;
+   requires_multi_sig?: boolean;
 }
 
 interface UpdateEscrowRequest {
@@ -85,7 +88,18 @@ interface UpdateEscrowRequest {
   tx_hash: string;
 }
 
-type EscrowRequest = CreateEscrowRequest | UpdateEscrowRequest;
+ interface SignEscrowRequest {
+   action: "sign";
+   escrow_id: string;
+   signer_address: string;
+ }
+ 
+ interface GetMultiSigStatusRequest {
+   action: "get_multisig_status";
+   escrow_id: string;
+ }
+ 
+ type EscrowRequest = CreateEscrowRequest | UpdateEscrowRequest | SignEscrowRequest | GetMultiSigStatusRequest;
 
 serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight
@@ -123,7 +137,7 @@ serve(async (req: Request): Promise<Response> => {
     const body: EscrowRequest = await req.json();
 
     if (body.action === "create") {
-      const { buyer_address, seller_address, amount, deadline, description, tx_hash } = body as CreateEscrowRequest;
+       const { buyer_address, seller_address, amount, deadline, description, tx_hash, requires_multi_sig } = body as CreateEscrowRequest;
 
       // Validate required fields exist
       if (!buyer_address || !seller_address || !amount || !deadline || !tx_hash) {
@@ -185,6 +199,7 @@ serve(async (req: Request): Promise<Response> => {
           description: description?.substring(0, 500), // Enforce limit
           buyer_user_id: userId,
           status: "active",
+           requires_multi_sig: requires_multi_sig || false,
         })
         .select()
         .single();
@@ -286,6 +301,16 @@ serve(async (req: Request): Promise<Response> => {
         );
         }
       }
+       
+       // For multi-sig release, check both parties have signed
+       if (body.action === "release" && escrow.requires_multi_sig) {
+         if (!escrow.buyer_signed_at || !escrow.seller_signed_at) {
+           return new Response(
+             JSON.stringify({ error: SAFE_ERRORS.MULTI_SIG_REQUIRED }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+       }
 
       const newStatus = body.action === "release" ? "completed" : "refunded";
       const txType = body.action === "release" ? "released" : "refunded";
@@ -331,6 +356,156 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
+     // Handle sign action for multi-sig
+     if (body.action === "sign") {
+       const { escrow_id, signer_address } = body as SignEscrowRequest;
+ 
+       if (!escrow_id || !signer_address) {
+         return new Response(
+           JSON.stringify({ error: SAFE_ERRORS.MISSING_FIELDS }),
+           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       // Validate address format
+       if (!isValidCardanoAddress(signer_address)) {
+         return new Response(
+           JSON.stringify({ error: SAFE_ERRORS.INVALID_ADDRESS }),
+           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       // Get escrow
+       const { data: escrow, error: fetchError } = await supabase
+         .from("escrows")
+         .select("*")
+         .eq("id", escrow_id)
+         .single();
+ 
+       if (fetchError || !escrow) {
+         return new Response(
+           JSON.stringify({ error: SAFE_ERRORS.ESCROW_NOT_FOUND }),
+           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       if (escrow.status !== "active") {
+         return new Response(
+           JSON.stringify({ error: SAFE_ERRORS.ESCROW_NOT_ACTIVE }),
+           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       // Determine if signer is buyer or seller
+       const isBuyer = signer_address === escrow.buyer_address;
+       const isSeller = signer_address === escrow.seller_address;
+ 
+       if (!isBuyer && !isSeller) {
+         return new Response(
+           JSON.stringify({ error: SAFE_ERRORS.NOT_PARTICIPANT }),
+           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       // Check if already signed
+       if (isBuyer && escrow.buyer_signed_at) {
+         return new Response(
+           JSON.stringify({ error: SAFE_ERRORS.ALREADY_SIGNED }),
+           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+       if (isSeller && escrow.seller_signed_at) {
+         return new Response(
+           JSON.stringify({ error: SAFE_ERRORS.ALREADY_SIGNED }),
+           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       // Record signature
+       const now = new Date().toISOString();
+       const updateField = isBuyer ? { buyer_signed_at: now } : { seller_signed_at: now };
+ 
+       const { data: updatedEscrow, error: updateError } = await supabase
+         .from("escrows")
+         .update(updateField)
+         .eq("id", escrow_id)
+         .select()
+         .single();
+ 
+       if (updateError) {
+         console.error("Signature update error:", updateError);
+         return new Response(
+           JSON.stringify({ error: sanitizeDbError(updateError) }),
+           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       const buyerSigned = !!updatedEscrow.buyer_signed_at;
+       const sellerSigned = !!updatedEscrow.seller_signed_at;
+       const canRelease = updatedEscrow.requires_multi_sig 
+         ? (buyerSigned && sellerSigned) 
+         : buyerSigned;
+ 
+       return new Response(
+         JSON.stringify({
+           escrow: updatedEscrow,
+           signature: {
+             role: isBuyer ? "buyer" : "seller",
+             signed_at: now,
+             buyer_signed: buyerSigned,
+             seller_signed: sellerSigned,
+             can_release: canRelease,
+           }
+         }),
+         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+       );
+     }
+ 
+     // Handle get multi-sig status
+     if (body.action === "get_multisig_status") {
+       const { escrow_id } = body as GetMultiSigStatusRequest;
+ 
+       if (!escrow_id) {
+         return new Response(
+           JSON.stringify({ error: SAFE_ERRORS.MISSING_FIELDS }),
+           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       const { data: escrow, error: fetchError } = await supabase
+         .from("escrows")
+         .select("id, requires_multi_sig, buyer_signed_at, seller_signed_at, status")
+         .eq("id", escrow_id)
+         .single();
+ 
+       if (fetchError || !escrow) {
+         return new Response(
+           JSON.stringify({ error: SAFE_ERRORS.ESCROW_NOT_FOUND }),
+           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       const buyerSigned = !!escrow.buyer_signed_at;
+       const sellerSigned = !!escrow.seller_signed_at;
+       const canRelease = escrow.requires_multi_sig 
+         ? (buyerSigned && sellerSigned) 
+         : buyerSigned;
+ 
+       return new Response(
+         JSON.stringify({
+           escrow_id: escrow.id,
+           requires_multi_sig: escrow.requires_multi_sig,
+           buyer_signed: buyerSigned,
+           seller_signed: sellerSigned,
+           buyer_signed_at: escrow.buyer_signed_at,
+           seller_signed_at: escrow.seller_signed_at,
+           can_release: canRelease,
+           status: escrow.status,
+         }),
+         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+       );
+     }
+ 
     return new Response(
       JSON.stringify({ error: SAFE_ERRORS.INVALID_ACTION }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
