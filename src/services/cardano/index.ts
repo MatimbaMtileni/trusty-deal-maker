@@ -91,3 +91,16 @@ export {
    type MultiSigStatus,
    type SignatureResult,
  } from './multiSig';
+ 
+ // Transaction builder
+ export {
+   txBuilderService,
+   buildFundEscrowTx,
+   buildReleaseEscrowTx,
+   buildRefundEscrowTx,
+   executeEscrowFund,
+   executeEscrowRelease,
+   executeEscrowRefund,
+   type TxBuildResult,
+   type EscrowTxParams,
+ } from './txBuilder';
