@@ -179,8 +179,8 @@ export const EscrowDetail: React.FC = () => {
  
        // Request wallet to sign the transaction
        // For now, we create a simple signed message as proof of authorization
-       const message = `Release escrow ${displayEscrow.id} - ${displayEscrow.amount} ADA to seller`;
-       const messageHex = Buffer.from(message).toString('hex');
+      const message = `Release escrow ${displayEscrow.id} - ${displayEscrow.amount} ADA to seller`;
+       const messageHex = Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
        
        // Sign data with wallet to prove authorization
        const { signature } = await walletApi.signData(wallet.address, messageHex);
@@ -241,8 +241,8 @@ export const EscrowDetail: React.FC = () => {
        });
  
        // Sign data with wallet to prove authorization
-       const message = `Refund escrow ${displayEscrow.id} - ${displayEscrow.amount} ADA to buyer`;
-       const messageHex = Buffer.from(message).toString('hex');
+      const message = `Refund escrow ${displayEscrow.id} - ${displayEscrow.amount} ADA to buyer`;
+       const messageHex = Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
        
        const { signature } = await walletApi.signData(wallet.address, messageHex);
        
