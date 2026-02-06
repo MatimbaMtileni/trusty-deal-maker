@@ -34,7 +34,9 @@ import { EscrowChat } from '@/components/escrow/EscrowChat';
 import { EscrowAttachments } from '@/components/escrow/EscrowAttachments';
 import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { escrowApi } from '@/services/escrowApi';
- import { lovelaceToAda } from '@/services/lucidService';
+import { lovelaceToAda } from '@/services/lucidService';
+import { executeEscrowRelease, executeEscrowRefund } from '@/services/cardano/txBuilder';
+import { getActiveScript } from '@/services/cardano/scriptRegistry';
 import { useToast } from '@/hooks/use-toast';
 import { UserRole, EscrowTransaction } from '@/types/escrow';
 
