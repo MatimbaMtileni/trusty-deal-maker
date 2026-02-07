@@ -47,7 +47,7 @@ async function callTxBuilder(params: Record<string, unknown>): Promise<TxBuildRe
 
 interface WalletApi {
   getUtxos: (amount?: string) => Promise<string[] | null>;
-  getCollateral: () => Promise<string[] | null>;
+  getCollateral?: () => Promise<string[] | null>;
   getChangeAddress: () => Promise<string>;
   signTx: (tx: string, partialSign?: boolean) => Promise<string>;
   submitTx: (tx: string) => Promise<string>;
