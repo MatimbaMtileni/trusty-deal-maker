@@ -166,37 +166,34 @@ export const EscrowDetail: React.FC = () => {
   };
 
   const handleRelease = async () => {
-     if (!displayEscrow || !wallet || !user || !walletApi) return;
+    if (!displayEscrow || !wallet || !user || !walletApi || !escrow) return;
     
     setIsProcessing(true);
     try {
-       // Check if we have UTxO info for real transaction
-       if (!escrow?.utxo_tx_hash || escrow?.utxo_output_index === undefined) {
-         // Fallback: Use wallet to sign a simple transaction
-         toast({
-           title: 'Wallet Authorization Required',
-           description: 'Please approve the transaction in your wallet...',
-         });
-       }
- 
-       // Request wallet to sign the transaction
-       // For now, we create a simple signed message as proof of authorization
-      const message = `Release escrow ${displayEscrow.id} - ${displayEscrow.amount} ADA to seller`;
-       const messageHex = Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
-       
-       // Sign data with wallet to prove authorization
-       const { signature } = await walletApi.signData(wallet.address, messageHex);
-       
-       if (!signature) {
-         throw new Error('Wallet signature rejected');
-       }
- 
-       // Generate transaction hash (in production, this would be the actual submitted tx hash)
-       const txHash = generateTxHashFromSignature(signature);
-       
+      toast({
+        title: 'Wallet Authorization Required',
+        description: 'Please approve the transaction in your wallet...',
+      });
+
+      const activeScript = getActiveScript();
+      const scriptCbor = activeScript.scriptCbor || '';
+
+      const result = await executeEscrowRelease(walletApi, {
+        buyerAddress: escrow.buyer_address,
+        sellerAddress: escrow.seller_address,
+        deadline: new Date(escrow.deadline),
+        escrowUtxoTxHash: escrow.utxo_tx_hash || '',
+        escrowUtxoIndex: escrow.utxo_output_index ?? 0,
+        scriptCbor,
+      });
+
+      if (!result.success || !result.txHash) {
+        throw new Error(result.error || 'Transaction failed');
+      }
+
       const { escrow: updatedEscrow, transaction } = await escrowApi.releaseEscrow({
         escrow_id: displayEscrow.id,
-        tx_hash: txHash,
+        tx_hash: result.txHash,
       });
       
       setEscrow(updatedEscrow);
@@ -204,28 +201,27 @@ export const EscrowDetail: React.FC = () => {
       
       toast({
         title: 'Funds Released!',
-        description: `${displayEscrow.amount} ADA has been sent to the seller`,
+        description: `${displayEscrow.amount} ADA has been sent to the seller. Tx: ${result.txHash.slice(0, 12)}…`,
       });
        
-       await refreshBalance();
+      await refreshBalance();
     } catch (error) {
-       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
        
-       // Check if user rejected the transaction
-       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel')) {
-         toast({
-           variant: 'destructive',
-           title: 'Transaction Cancelled',
-           description: 'You cancelled the wallet authorization',
-         });
-         setIsProcessing(false);
-         return;
-       }
+      if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        toast({
+          variant: 'destructive',
+          title: 'Transaction Cancelled',
+          description: 'You cancelled the wallet authorization',
+        });
+        setIsProcessing(false);
+        return;
+      }
        
       toast({
         variant: 'destructive',
         title: 'Release Failed',
-         description: errorMessage,
+        description: errorMessage,
       });
     } finally {
       setIsProcessing(false);
@@ -233,30 +229,34 @@ export const EscrowDetail: React.FC = () => {
   };
 
   const handleRefund = async () => {
-     if (!displayEscrow || !wallet || !user || !walletApi) return;
+    if (!displayEscrow || !wallet || !user || !walletApi || !escrow) return;
     
     setIsProcessing(true);
     try {
-       toast({
-         title: 'Wallet Authorization Required',
-         description: 'Please approve the refund in your wallet...',
-       });
- 
-       // Sign data with wallet to prove authorization
-      const message = `Refund escrow ${displayEscrow.id} - ${displayEscrow.amount} ADA to buyer`;
-       const messageHex = Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
-       
-       const { signature } = await walletApi.signData(wallet.address, messageHex);
-       
-       if (!signature) {
-         throw new Error('Wallet signature rejected');
-       }
- 
-       const txHash = generateTxHashFromSignature(signature);
-       
+      toast({
+        title: 'Wallet Authorization Required',
+        description: 'Please approve the refund in your wallet...',
+      });
+
+      const activeScript = getActiveScript();
+      const scriptCbor = activeScript.scriptCbor || '';
+
+      const result = await executeEscrowRefund(walletApi, {
+        buyerAddress: escrow.buyer_address,
+        sellerAddress: escrow.seller_address,
+        deadline: new Date(escrow.deadline),
+        escrowUtxoTxHash: escrow.utxo_tx_hash || '',
+        escrowUtxoIndex: escrow.utxo_output_index ?? 0,
+        scriptCbor,
+      });
+
+      if (!result.success || !result.txHash) {
+        throw new Error(result.error || 'Transaction failed');
+      }
+
       const { escrow: updatedEscrow, transaction } = await escrowApi.refundEscrow({
         escrow_id: displayEscrow.id,
-        tx_hash: txHash,
+        tx_hash: result.txHash,
       });
       
       setEscrow(updatedEscrow);
@@ -265,37 +265,30 @@ export const EscrowDetail: React.FC = () => {
       
       toast({
         title: 'Refund Successful!',
-        description: `${displayEscrow.amount} ADA has been returned to your wallet`,
+        description: `${displayEscrow.amount} ADA has been returned to your wallet. Tx: ${result.txHash.slice(0, 12)}…`,
       });
     } catch (error) {
-       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
        
-       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel')) {
-         toast({
-           variant: 'destructive',
-           title: 'Transaction Cancelled',
-           description: 'You cancelled the wallet authorization',
-         });
-         setIsProcessing(false);
-         return;
-       }
+      if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        toast({
+          variant: 'destructive',
+          title: 'Transaction Cancelled',
+          description: 'You cancelled the wallet authorization',
+        });
+        setIsProcessing(false);
+        return;
+      }
        
       toast({
         variant: 'destructive',
         title: 'Refund Failed',
-         description: errorMessage,
+        description: errorMessage,
       });
     } finally {
       setIsProcessing(false);
     }
   };
- 
- // Generate a deterministic tx hash from signature (for demo purposes)
- function generateTxHashFromSignature(signature: string): string {
-   // Create a hash-like string from the signature
-   const hash = signature.slice(0, 64).padEnd(64, '0');
-   return hash.toLowerCase().replace(/[^a-f0-9]/g, 'a');
- }
 
   if (loading) {
     return (
