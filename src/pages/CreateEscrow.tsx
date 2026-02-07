@@ -24,7 +24,8 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { WalletConnectModal } from '@/components/wallet/WalletConnectModal';
 import { escrowApi } from '@/services/escrowApi';
-import { lucidService, adaToLovelace, generateMockTxHash } from '@/services/lucidService';
+import { adaToLovelace } from '@/services/lucidService';
+import { executeEscrowFund } from '@/services/cardano/txBuilder';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -56,7 +57,7 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export const CreateEscrow: React.FC = () => {
-  const { wallet, refreshBalance } = useWallet();
+  const { wallet, walletApi, refreshBalance } = useWallet();
   const { user } = useAuth();
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -74,7 +75,7 @@ export const CreateEscrow: React.FC = () => {
   });
 
   const onSubmit = async (values: FormValues) => {
-    if (!wallet || !user) return;
+    if (!wallet || !user || !walletApi) return;
 
     // Validate against actual wallet balance
     if (values.amount > wallet.balance) {
@@ -104,20 +105,29 @@ export const CreateEscrow: React.FC = () => {
       }
 
       let txHash: string;
+      let outputIndex = 0;
 
-      // Try to use Lucid for real blockchain transaction
-      if (lucidService.isInitialized()) {
-        txHash = await lucidService.createEscrow({
-          sellerAddress: values.sellerAddress,
-          amount: adaToLovelace(values.amount),
-          deadline: values.deadline,
-        });
-      } else {
-        // Fallback to simulated transaction for demo
-        txHash = generateMockTxHash();
+      // Build and submit a real on-chain funding transaction
+      toast({
+        title: 'Wallet Authorization Required',
+        description: 'Please approve the transaction in your wallet...',
+      });
+
+      const fundResult = await executeEscrowFund(walletApi, {
+        buyerAddress: wallet.address,
+        sellerAddress: values.sellerAddress,
+        amount: adaToLovelace(values.amount),
+        deadline: values.deadline,
+      });
+
+      if (!fundResult.success || !fundResult.txHash) {
+        throw new Error(fundResult.error || 'Transaction failed');
       }
 
-      // Store escrow in database via API
+      txHash = fundResult.txHash;
+      outputIndex = fundResult.outputIndex ?? 0;
+
+      // Store escrow in database via API (with UTxO reference for later spend)
       const { escrow } = await escrowApi.createEscrow({
         buyer_address: wallet.address,
         seller_address: values.sellerAddress,
@@ -125,6 +135,8 @@ export const CreateEscrow: React.FC = () => {
         deadline: values.deadline.toISOString(),
         description: values.description,
         tx_hash: txHash,
+        utxo_tx_hash: txHash,
+        utxo_output_index: outputIndex,
       });
       
       // Refresh balance after transaction to reflect locked funds

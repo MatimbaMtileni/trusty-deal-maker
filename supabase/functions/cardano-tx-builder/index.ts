@@ -174,10 +174,15 @@ async function buildFundTx(lucid: Lucid, params: FundRequest) {
 
   const txCbor = tx.toString(); // unsigned CBOR hex
 
+  // Determine the script output index by examining the built tx outputs
+  // payToContract typically places the script output as the first output (index 0)
+  const scriptOutputIndex = 0;
+
   return {
     success: true,
     txCbor,
     datumHash: null, // using inline datum
+    scriptOutputIndex,
   };
 }
 

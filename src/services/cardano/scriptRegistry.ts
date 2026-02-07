@@ -18,8 +18,19 @@ export interface ScriptDeployment {
   deploymentBlock?: number;
   /** Human-readable version */
   version: string;
-  /** CBOR of the compiled Plutus script (for reference validators) */
-  scriptCbor?: string;
+  /**
+   * Compiled Plutus V2 script CBOR (hex).
+   * 
+   * HOW TO OBTAIN:
+   * 1. cd plutus-contract && cabal build
+   * 2. cabal run serialize-escrow   → produces escrow.plutus
+   * 3. Extract the "cborHex" field from escrow.plutus (TextEnvelope JSON)
+   * 4. Paste that hex string here
+   * 
+   * Without this value, release/refund transactions cannot attach
+   * the spending validator and will fail on-chain.
+   */
+  scriptCbor: string;
 }
 
 /**
@@ -36,16 +47,20 @@ export const ESCROW_SCRIPTS: Record<CardanoNetwork, ScriptDeployment> = {
     scriptHash: 'a89327fc6afdbed834721d9a5e4fdebea06cf2cbf53699b780f96576',
     version: '1.0.0',
     deploymentBlock: undefined, // Set after deployment
+    // ⚠️  PLACEHOLDER – replace with real compiled CBOR from escrow.plutus
+    scriptCbor: '',
   },
   preview: {
-    address: '', // Not deployed on preview
+    address: '',
     scriptHash: '',
     version: '1.0.0',
+    scriptCbor: '',
   },
   mainnet: {
-    address: '', // Not deployed on mainnet yet
+    address: '',
     scriptHash: '',
     version: '1.0.0',
+    scriptCbor: '',
   },
 };
 
