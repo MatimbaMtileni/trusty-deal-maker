@@ -80,7 +80,9 @@ interface CreateEscrowRequest {
   deadline: string;
   description?: string;
   tx_hash: string;
-   requires_multi_sig?: boolean;
+  requires_multi_sig?: boolean;
+  utxo_tx_hash?: string;
+  utxo_output_index?: number;
 }
 
 interface UpdateEscrowRequest {
@@ -138,7 +140,7 @@ serve(async (req: Request): Promise<Response> => {
     const body: EscrowRequest = await req.json();
 
     if (body.action === "create") {
-       const { buyer_address, seller_address, amount, deadline, description, tx_hash, requires_multi_sig } = body as CreateEscrowRequest;
+       const { buyer_address, seller_address, amount, deadline, description, tx_hash, requires_multi_sig, utxo_tx_hash, utxo_output_index } = body as CreateEscrowRequest;
 
       // Validate required fields exist
       if (!buyer_address || !seller_address || !amount || !deadline || !tx_hash) {
@@ -197,10 +199,12 @@ serve(async (req: Request): Promise<Response> => {
           seller_address,
           amount,
           deadline,
-          description: description?.substring(0, 500), // Enforce limit
+          description: description?.substring(0, 500),
           buyer_user_id: userId,
           status: "active",
-           requires_multi_sig: requires_multi_sig || false,
+          requires_multi_sig: requires_multi_sig || false,
+          utxo_tx_hash: utxo_tx_hash || null,
+          utxo_output_index: utxo_output_index ?? null,
         })
         .select()
         .single();

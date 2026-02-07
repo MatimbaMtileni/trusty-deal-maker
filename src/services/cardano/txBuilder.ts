@@ -10,6 +10,7 @@ export interface TxBuildResult {
   success: boolean;
   txCbor?: string;
   error?: string;
+  scriptOutputIndex?: number;
 }
 
 /** Parameters for any escrow tx */
@@ -65,7 +66,7 @@ export async function executeEscrowFund(
     amount: bigint;
     deadline: Date;
   }
-): Promise<{ success: boolean; txHash?: string; error?: string }> {
+): Promise<{ success: boolean; txHash?: string; outputIndex?: number; error?: string }> {
   try {
     const walletUtxos = await walletApi.getUtxos();
     if (!walletUtxos?.length) {
@@ -98,7 +99,11 @@ export async function executeEscrowFund(
     const signedTx = await walletApi.signTx(buildResult.txCbor, false);
     const txHash = await walletApi.submitTx(signedTx);
 
-    return { success: true, txHash };
+    // The script output is typically at index 0 (first output)
+    // The edge function returns the index if available
+    const outputIndex = buildResult.scriptOutputIndex ?? 0;
+
+    return { success: true, txHash, outputIndex };
   } catch (error) {
     console.error('[TxBuilder] Fund error:', error);
     return { success: false, error: errorMsg(error) };

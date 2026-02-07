@@ -9,7 +9,9 @@ interface CreateEscrowParams {
   deadline: string;
   description?: string;
   tx_hash: string;
-   requires_multi_sig?: boolean;
+  requires_multi_sig?: boolean;
+  utxo_tx_hash?: string;
+  utxo_output_index?: number;
 }
 
 interface EscrowActionParams {
