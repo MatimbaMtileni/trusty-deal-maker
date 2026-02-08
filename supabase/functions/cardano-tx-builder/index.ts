@@ -1,10 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   Blockfrost,
-  Constr,
-  Data,
   Lucid,
-  type NativeScript,
   type Script,
   type UTxO,
 } from "https://deno.land/x/lucid@0.10.11/mod.ts";
@@ -60,7 +57,7 @@ function buildEscrowNativeScript(
   const buyerPkh = paymentCredentialOf(lucid, buyerAddress);
   const sellerPkh = paymentCredentialOf(lucid, sellerAddress);
 
-  const nativeScript: NativeScript = {
+  const nativeScript = {
     type: "any",
     scripts: [
       {
@@ -80,11 +77,8 @@ function buildEscrowNativeScript(
     ],
   };
 
-  const script: Script = {
-    type: "Native",
-    script: lucid.utils.nativeScriptFromJson(nativeScript),
-  };
-
+  // nativeScriptFromJson returns { type: "Native", script: cborHex }
+  const script: Script = lucid.utils.nativeScriptFromJson(nativeScript);
   const scriptAddress = lucid.utils.validatorToAddress(script);
 
   return { script, scriptAddress };
