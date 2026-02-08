@@ -4,7 +4,7 @@
  
  import { supabase } from '@/integrations/supabase/client';
  import { blockchainService } from './blockchainService';
- import { getEscrowScriptAddress, verifyScriptAddress } from './scriptRegistry';
+ import { isScriptDeployed } from './scriptRegistry';
  import { UTxO } from './types';
  
  /** Escrow on-chain state */
@@ -53,20 +53,11 @@
  /**
   * Check if a specific UTxO has been spent
   */
- async function isUtxoSpent(txHash: string, outputIndex: number): Promise<boolean> {
-   try {
-     // Query the specific UTxO - if it returns empty, it's been spent
-     const scriptAddress = getEscrowScriptAddress();
-     const utxos = await blockchainService.getUtxos(scriptAddress);
-     
-     return !utxos.some(u => 
-       u.txHash === txHash && u.outputIndex === outputIndex
-     );
-   } catch {
-     // If we can't check, assume not spent
-     return false;
-   }
- }
+ async function isUtxoSpent(_txHash: string, _outputIndex: number): Promise<boolean> {
+    // In native-script mode, each escrow has a unique script address.
+    // Without that address we can't query on-chain. Rely on the sync flow.
+    return false;
+  }
  
  /**
   * Sync a single escrow's on-chain state with database
@@ -89,12 +80,9 @@
        return { escrowId, status: 'synced' };
      }
      
-     const scriptAddress = getEscrowScriptAddress();
-     
-     // Verify script address is valid
-     if (!verifyScriptAddress(scriptAddress)) {
-       return { escrowId, status: 'error', error: 'Invalid script address' };
-     }
+      if (!isScriptDeployed()) {
+        return { escrowId, status: 'error', error: 'Escrow not enabled on this network' };
+      }
      
      // Check if we have a tracked UTxO
      if (escrow.utxo_tx_hash && escrow.utxo_output_index !== null) {
@@ -136,8 +124,9 @@
        }
      }
      
-     // Find current UTxO at script address
-     const utxo = await findEscrowUtxo(scriptAddress, escrow.datum_hash || undefined);
+      // In native-script mode, script_address is per-escrow (stored in DB)
+      const scriptAddr = escrow.script_address;
+      const utxo = scriptAddr ? await findEscrowUtxo(scriptAddr, escrow.datum_hash || undefined) : null;
      
      if (!utxo) {
        // No UTxO found - could be pending or already spent

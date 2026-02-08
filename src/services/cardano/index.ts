@@ -31,12 +31,7 @@ export {
 export {
   ESCROW_SCRIPTS,
   getActiveScript,
-  verifyScriptAddress,
-  verifyScriptHash,
-  getEscrowScriptAddress,
-  getEscrowScriptHash,
   isScriptDeployed,
-  validateTransactionScript,
   getScriptVerificationStatus,
   type ScriptDeployment,
 } from './scriptRegistry';
@@ -99,5 +94,4 @@ export {
   executeEscrowRelease,
   executeEscrowRefund,
   type TxBuildResult,
-  type EscrowTxParams,
 } from './txBuilder';

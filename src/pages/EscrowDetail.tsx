@@ -36,7 +36,6 @@ import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { escrowApi } from '@/services/escrowApi';
 import { lovelaceToAda } from '@/services/lucidService';
 import { executeEscrowRelease, executeEscrowRefund } from '@/services/cardano/txBuilder';
-import { getActiveScript } from '@/services/cardano/scriptRegistry';
 import { useToast } from '@/hooks/use-toast';
 import { UserRole, EscrowTransaction } from '@/types/escrow';
 
@@ -175,16 +174,12 @@ export const EscrowDetail: React.FC = () => {
         description: 'Please approve the transaction in your wallet...',
       });
 
-      const activeScript = getActiveScript();
-      const scriptCbor = activeScript.scriptCbor || '';
-
       const result = await executeEscrowRelease(walletApi, {
         buyerAddress: escrow.buyer_address,
         sellerAddress: escrow.seller_address,
         deadline: new Date(escrow.deadline),
         escrowUtxoTxHash: escrow.utxo_tx_hash || '',
         escrowUtxoIndex: escrow.utxo_output_index ?? 0,
-        scriptCbor,
       });
 
       if (!result.success || !result.txHash) {
@@ -238,16 +233,12 @@ export const EscrowDetail: React.FC = () => {
         description: 'Please approve the refund in your wallet...',
       });
 
-      const activeScript = getActiveScript();
-      const scriptCbor = activeScript.scriptCbor || '';
-
       const result = await executeEscrowRefund(walletApi, {
         buyerAddress: escrow.buyer_address,
         sellerAddress: escrow.seller_address,
         deadline: new Date(escrow.deadline),
         escrowUtxoTxHash: escrow.utxo_tx_hash || '',
         escrowUtxoIndex: escrow.utxo_output_index ?? 0,
-        scriptCbor,
       });
 
       if (!result.success || !result.txHash) {

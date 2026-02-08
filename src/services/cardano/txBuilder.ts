@@ -1,28 +1,28 @@
 // ============================================================================
-// Transaction Builder Service – real Cardano transactions via Lucid edge fn
+// Transaction Builder Service – Native Script escrow via edge function
 // ============================================================================
 
 import { supabase } from '@/integrations/supabase/client';
-import { getEscrowScriptAddress } from './scriptRegistry';
 
 /** Result from the edge-function tx builder */
 export interface TxBuildResult {
   success: boolean;
   txCbor?: string;
   error?: string;
+  scriptAddress?: string;
   scriptOutputIndex?: number;
 }
 
-/** Parameters for any escrow tx */
-export interface EscrowTxParams {
-  escrowId: string;
-  buyerAddress: string;
-  sellerAddress: string;
-  amount: bigint; // lovelace
-  deadline: Date;
-  action: 'fund' | 'release' | 'refund';
-  utxoTxHash?: string;
-  utxoOutputIndex?: number;
+// ============================================================================
+// CIP-30 wallet shape (subset we need)
+// ============================================================================
+
+interface WalletApi {
+  getUtxos: (amount?: string) => Promise<string[] | null>;
+  getCollateral?: () => Promise<string[] | null>;
+  getChangeAddress: () => Promise<string>;
+  signTx: (tx: string, partialSign?: boolean) => Promise<string>;
+  submitTx: (tx: string) => Promise<string>;
 }
 
 // ============================================================================
@@ -43,15 +43,17 @@ async function callTxBuilder(params: Record<string, unknown>): Promise<TxBuildRe
 }
 
 // ============================================================================
-// CIP-30 wallet shape (subset we need)
+// Slot conversion helper
 // ============================================================================
 
-interface WalletApi {
-  getUtxos: (amount?: string) => Promise<string[] | null>;
-  getCollateral?: () => Promise<string[] | null>;
-  getChangeAddress: () => Promise<string>;
-  signTx: (tx: string, partialSign?: boolean) => Promise<string>;
-  submitTx: (tx: string) => Promise<string>;
+/**
+ * Convert a JS Date to a Cardano Preprod slot number.
+ * Preprod genesis: slot 0 = 2022-07-25T00:00:00Z (Unix 1658707200)
+ * 1 slot = 1 second
+ */
+function dateToSlot(date: Date): number {
+  const PREPROD_GENESIS_UNIX = 1658707200;
+  return Math.floor(date.getTime() / 1000) - PREPROD_GENESIS_UNIX;
 }
 
 // ============================================================================
@@ -66,29 +68,16 @@ export async function executeEscrowFund(
     amount: bigint;
     deadline: Date;
   }
-): Promise<{ success: boolean; txHash?: string; outputIndex?: number; error?: string }> {
+): Promise<{ success: boolean; txHash?: string; outputIndex?: number; scriptAddress?: string; error?: string }> {
   try {
-    const walletUtxos = await walletApi.getUtxos();
-    if (!walletUtxos?.length) {
-      return { success: false, error: 'No UTxOs available in wallet' };
-    }
-
-    const changeAddress = await walletApi.getChangeAddress();
-    const scriptAddress = getEscrowScriptAddress();
-
-    if (!scriptAddress) {
-      return { success: false, error: 'Escrow script not deployed on this network' };
-    }
+    const deadlineSlot = dateToSlot(params.deadline);
 
     const buildResult = await callTxBuilder({
       action: 'buildFundTx',
       buyerAddress: params.buyerAddress,
       sellerAddress: params.sellerAddress,
-      scriptAddress,
       amount: params.amount.toString(),
-      deadlineMs: params.deadline.getTime(),
-      walletUtxos,
-      changeAddress,
+      deadlineSlot,
     });
 
     if (!buildResult.success || !buildResult.txCbor) {
@@ -99,11 +88,12 @@ export async function executeEscrowFund(
     const signedTx = await walletApi.signTx(buildResult.txCbor, false);
     const txHash = await walletApi.submitTx(signedTx);
 
-    // The script output is typically at index 0 (first output)
-    // The edge function returns the index if available
-    const outputIndex = buildResult.scriptOutputIndex ?? 0;
-
-    return { success: true, txHash, outputIndex };
+    return {
+      success: true,
+      txHash,
+      outputIndex: buildResult.scriptOutputIndex ?? 0,
+      scriptAddress: buildResult.scriptAddress,
+    };
   } catch (error) {
     console.error('[TxBuilder] Fund error:', error);
     return { success: false, error: errorMsg(error) };
@@ -111,7 +101,7 @@ export async function executeEscrowFund(
 }
 
 // ============================================================================
-// RELEASE – buyer authorizes release of funds to seller
+// RELEASE – buyer + seller authorize release of funds to seller
 // ============================================================================
 
 export async function executeEscrowRelease(
@@ -122,7 +112,6 @@ export async function executeEscrowRelease(
     deadline: Date;
     escrowUtxoTxHash: string;
     escrowUtxoIndex: number;
-    scriptCbor: string;
   }
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   return executeSpend(walletApi, params, 'buildReleaseTx');
@@ -140,7 +129,6 @@ export async function executeEscrowRefund(
     deadline: Date;
     escrowUtxoTxHash: string;
     escrowUtxoIndex: number;
-    scriptCbor: string;
   }
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   return executeSpend(walletApi, params, 'buildRefundTx');
@@ -158,48 +146,28 @@ async function executeSpend(
     deadline: Date;
     escrowUtxoTxHash: string;
     escrowUtxoIndex: number;
-    scriptCbor: string;
   },
   action: 'buildReleaseTx' | 'buildRefundTx'
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   try {
-    const collateral = await walletApi.getCollateral?.();
-    if (!collateral?.length) {
-      return { success: false, error: 'No collateral set. Please configure collateral in your wallet.' };
-    }
-
-    const walletUtxos = await walletApi.getUtxos();
-    if (!walletUtxos?.length) {
-      return { success: false, error: 'No UTxOs available in wallet' };
-    }
-
-    const changeAddress = await walletApi.getChangeAddress();
-    const scriptAddress = getEscrowScriptAddress();
-
-    if (!scriptAddress) {
-      return { success: false, error: 'Escrow script not deployed on this network' };
-    }
+    const deadlineSlot = dateToSlot(params.deadline);
 
     const buildResult = await callTxBuilder({
       action,
       buyerAddress: params.buyerAddress,
       sellerAddress: params.sellerAddress,
-      scriptAddress,
       escrowUtxoTxHash: params.escrowUtxoTxHash,
       escrowUtxoIndex: params.escrowUtxoIndex,
-      deadlineMs: params.deadline.getTime(),
-      collateralUtxos: collateral,
-      walletUtxos,
-      changeAddress,
-      scriptCbor: params.scriptCbor,
+      deadlineSlot,
     });
 
     if (!buildResult.success || !buildResult.txCbor) {
       return { success: false, error: buildResult.error || 'Failed to build transaction' };
     }
 
-    // Partial sign = true because the script also signs
-    const signedTx = await walletApi.signTx(buildResult.txCbor, true);
+    // Partial sign because release needs both buyer + seller
+    const partialSign = action === 'buildReleaseTx';
+    const signedTx = await walletApi.signTx(buildResult.txCbor, partialSign);
     const txHash = await walletApi.submitTx(signedTx);
 
     return { success: true, txHash };

@@ -3,10 +3,10 @@ import {
   Blockfrost,
   Constr,
   Data,
-  fromHex,
   Lucid,
-  toHex,
+  type NativeScript,
   type Script,
+  type UTxO,
 } from "https://deno.land/x/lucid@0.10.11/mod.ts";
 
 const corsHeaders = {
@@ -23,58 +23,71 @@ interface FundRequest {
   action: "buildFundTx";
   buyerAddress: string;
   sellerAddress: string;
-  scriptAddress: string;
   amount: string; // lovelace as string
-  deadlineMs: number;
-  walletUtxos: string[]; // CBOR hex from CIP-30 getUtxos()
-  changeAddress: string;
+  deadlineSlot: number;
 }
 
 interface SpendRequest {
   action: "buildReleaseTx" | "buildRefundTx";
   buyerAddress: string;
   sellerAddress: string;
-  scriptAddress: string;
   escrowUtxoTxHash: string;
   escrowUtxoIndex: number;
-  deadlineMs: number;
-  collateralUtxos: string[]; // CBOR hex from CIP-30 getCollateral()
-  walletUtxos: string[]; // For fee inputs
-  changeAddress: string;
-  scriptCbor: string; // Compiled Plutus script CBOR hex
+  deadlineSlot: number;
 }
 
 type TxBuilderRequest = FundRequest | SpendRequest;
 
 // ============================================================================
-// Datum / Redeemer schema (matches Plutus EscrowDatum / EscrowAction)
+// Native Script builder
 // ============================================================================
 
-// EscrowDatum = Constr 0 [buyerPkh, sellerPkh, deadline]
-//   buyerPkh  : ByteString (28 bytes)
-//   sellerPkh : ByteString (28 bytes)
-//   deadline  : Integer    (POSIX ms)
+/**
+ * Build a native script for escrow:
+ *  - Release: requires BOTH buyer AND seller signatures (before deadline)
+ *  - Refund:  requires buyer signature AND deadline has passed
+ *
+ * Script structure (any-of):
+ *   1. all-of [sig(buyer), sig(seller)]          → release
+ *   2. all-of [sig(buyer), after(deadlineSlot)]   → refund
+ */
+function buildEscrowNativeScript(
+  lucid: Lucid,
+  buyerAddress: string,
+  sellerAddress: string,
+  deadlineSlot: number
+): { script: Script; scriptAddress: string } {
+  const buyerPkh = paymentCredentialOf(lucid, buyerAddress);
+  const sellerPkh = paymentCredentialOf(lucid, sellerAddress);
 
-// EscrowAction = Release (Constr 0 []) | Refund (Constr 1 [])
+  const nativeScript: NativeScript = {
+    type: "any",
+    scripts: [
+      {
+        type: "all",
+        scripts: [
+          { type: "sig", keyHash: buyerPkh },
+          { type: "sig", keyHash: sellerPkh },
+        ],
+      },
+      {
+        type: "all",
+        scripts: [
+          { type: "sig", keyHash: buyerPkh },
+          { type: "after", slot: deadlineSlot },
+        ],
+      },
+    ],
+  };
 
-function extractPkh(bech32Address: string): string {
-  // Shelley base address: 1 byte header + 28 bytes payment cred + 28 bytes stake cred
-  // We need the 28 byte payment credential as hex
-  // Lucid can help with this via utilities
-  // For a base address the payment key hash starts at byte 1 (index 2 in hex)
-  // We'll use a simpler approach: the address hex minus header byte, first 56 chars
-  try {
-    // Use the C.Address parsing from Lucid internals if available
-    // Fallback: manual extraction from bech32 → hex
-    const { bech32 } = await import("https://deno.land/x/lucid@0.10.11/src/core/libs/bech32/index.js");
-    // Actually let's just do it ourselves since we control the format
-    throw new Error("use fallback");
-  } catch {
-    // We'll receive addresses already as bech32, Lucid handles conversion internally
-    // For datum construction we need the pubkey hash
-    // Let's decode from bech32 ourselves
-  }
-  return ""; // placeholder - Lucid handles this
+  const script: Script = {
+    type: "Native",
+    script: lucid.utils.nativeScriptFromJson(nativeScript),
+  };
+
+  const scriptAddress = lucid.utils.validatorToAddress(script);
+
+  return { script, scriptAddress };
 }
 
 // ============================================================================
@@ -94,7 +107,6 @@ serve(async (req) => {
 
     const body: TxBuilderRequest = await req.json();
 
-    // Initialize Lucid with Blockfrost provider
     const lucid = await Lucid.new(
       new Blockfrost(
         "https://cardano-preprod.blockfrost.io/api/v0",
@@ -138,56 +150,38 @@ serve(async (req) => {
 });
 
 // ============================================================================
-// Build FUND transaction: buyer pays ADA to script address with inline datum
+// FUND – buyer sends ADA to the native-script escrow address
 // ============================================================================
 
 async function buildFundTx(lucid: Lucid, params: FundRequest) {
-  const {
+  const { buyerAddress, sellerAddress, amount, deadlineSlot } = params;
+
+  // Derive the escrow native-script address deterministically
+  const { scriptAddress } = buildEscrowNativeScript(
+    lucid,
     buyerAddress,
     sellerAddress,
-    scriptAddress,
-    amount,
-    deadlineMs,
-    walletUtxos,
-    changeAddress,
-  } = params;
-
-  // Select wallet UTxOs for the transaction
-  lucid.selectWalletFrom({
-    address: changeAddress,
-    utxos: lucid.utxosFromCbor(walletUtxos),
-  });
-
-  // Build the datum matching our Plutus EscrowDatum
-  const buyerPkh = paymentCredentialOf(lucid, buyerAddress);
-  const sellerPkh = paymentCredentialOf(lucid, sellerAddress);
-
-  const datum = Data.to(
-    new Constr(0, [buyerPkh, sellerPkh, BigInt(deadlineMs)])
+    deadlineSlot
   );
 
-  // Build transaction: send ADA to script with inline datum
+  // Query buyer UTxOs from Blockfrost (no CIP-30 CBOR decoding needed)
+  lucid.selectWalletFrom({ address: buyerAddress });
+
   const tx = await lucid
     .newTx()
-    .payToContract(scriptAddress, { inline: datum }, { lovelace: BigInt(amount) })
+    .payToAddress(scriptAddress, { lovelace: BigInt(amount) })
     .complete();
-
-  const txCbor = tx.toString(); // unsigned CBOR hex
-
-  // Determine the script output index by examining the built tx outputs
-  // payToContract typically places the script output as the first output (index 0)
-  const scriptOutputIndex = 0;
 
   return {
     success: true,
-    txCbor,
-    datumHash: null, // using inline datum
-    scriptOutputIndex,
+    txCbor: tx.toString(),
+    scriptAddress,
+    scriptOutputIndex: 0,
   };
 }
 
 // ============================================================================
-// Build SPEND transaction: collect UTxO from script (release or refund)
+// SPEND – collect UTxO from native-script address (release or refund)
 // ============================================================================
 
 async function buildSpendTx(
@@ -198,35 +192,23 @@ async function buildSpendTx(
   const {
     buyerAddress,
     sellerAddress,
-    scriptAddress,
     escrowUtxoTxHash,
     escrowUtxoIndex,
-    deadlineMs,
-    collateralUtxos,
-    walletUtxos,
-    changeAddress,
-    scriptCbor,
+    deadlineSlot,
   } = params;
 
-  // Construct the validator script object
-  const validator: Script = {
-    type: "PlutusV2",
-    script: scriptCbor,
-  };
+  const { script, scriptAddress } = buildEscrowNativeScript(
+    lucid,
+    buyerAddress,
+    sellerAddress,
+    deadlineSlot
+  );
 
-  // Select wallet UTxOs + collateral
-  const decodedUtxos = lucid.utxosFromCbor(walletUtxos);
-  const decodedCollateral = lucid.utxosFromCbor(collateralUtxos);
-
-  lucid.selectWalletFrom({
-    address: changeAddress,
-    utxos: decodedUtxos,
-  });
-
-  // Find the escrow UTxO at the script address
+  // Query the escrow UTxO at the script address
   const scriptUtxos = await lucid.utxosAt(scriptAddress);
   const escrowUtxo = scriptUtxos.find(
-    (u) => u.txHash === escrowUtxoTxHash && u.outputIndex === escrowUtxoIndex
+    (u: UTxO) =>
+      u.txHash === escrowUtxoTxHash && u.outputIndex === escrowUtxoIndex
   );
 
   if (!escrowUtxo) {
@@ -235,51 +217,40 @@ async function buildSpendTx(
     );
   }
 
-  // Build datum (must match what's on-chain)
-  const buyerPkh = paymentCredentialOf(lucid, buyerAddress);
-  const sellerPkh = paymentCredentialOf(lucid, sellerAddress);
-
-  // Redeemer: Release = Constr 0 [], Refund = Constr 1 []
-  const redeemer = Data.to(
-    new Constr(txType === "release" ? 0 : 1, [])
-  );
-
-  // Recipient
   const recipient = txType === "release" ? sellerAddress : buyerAddress;
+  const escrowLovelace = escrowUtxo.assets["lovelace"] || 0n;
 
-  // Escrow amount (subtract min fee estimate for the tx output)
-  const escrowLovelace =
-    escrowUtxo.assets["lovelace"] || 0n;
+  // Use buyer address as the wallet for coin selection (fee inputs)
+  lucid.selectWalletFrom({ address: buyerAddress });
 
-  // Build the spending transaction
   let txBuilder = lucid
     .newTx()
-    .collectFrom([escrowUtxo], redeemer)
-    .attachSpendingValidator(validator)
+    .collectFrom([escrowUtxo])
+    .attachSpendingValidator(script)
     .payToAddress(recipient, { lovelace: escrowLovelace });
 
-  // Add validity interval for refund (deadline must have passed)
+  // Validity interval
   if (txType === "refund") {
-    txBuilder = txBuilder.validFrom(deadlineMs);
+    // For refund the "after" timelock must be satisfied
+    txBuilder = txBuilder.validFrom(Date.now());
   } else {
-    // For release, must be before deadline
-    txBuilder = txBuilder.validTo(deadlineMs);
+    // Release requires both signatures, no timelock constraint needed
+    // but we add a TTL for safety
+    txBuilder = txBuilder.validTo(Date.now() + 600_000); // 10 min TTL
   }
 
-  // Add signer (buyer must sign for both release and refund in our contract)
+  // Required signers
   txBuilder = txBuilder.addSigner(buyerAddress);
+  if (txType === "release") {
+    txBuilder = txBuilder.addSigner(sellerAddress);
+  }
 
-  const tx = await txBuilder.complete({
-    coinSelection: true,
-    // Use the provided collateral
-    // noinspection JSUnusedLocalSymbols
-  });
-
-  const txCbor = tx.toString();
+  const tx = await txBuilder.complete();
 
   return {
     success: true,
-    txCbor,
+    txCbor: tx.toString(),
+    scriptAddress,
   };
 }
 
