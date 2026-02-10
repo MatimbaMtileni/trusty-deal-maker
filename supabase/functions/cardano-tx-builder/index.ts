@@ -2,26 +2,68 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   Blockfrost,
   Lucid,
-  type Script,
-  type UTxO,
+  SpendingValidator,
+  Data,
+  UTxO,
 } from "https://deno.land/x/lucid@0.10.11/mod.ts";
+
+/* ============================================================================
+   ENVIRONMENT & CONFIGURATION
+============================================================================ */
+
+const BLOCKFROST_API_KEY = Deno.env.get("BLOCKFROST_API_KEY");
+const ESCROW_SCRIPT_BASE64 = Deno.env.get("ESCROW_SCRIPT_BASE64");
+const ESCROW_SCRIPT_ADDRESS = Deno.env.get("ESCROW_SCRIPT_ADDRESS");
+
+if (!BLOCKFROST_API_KEY) {
+  throw new Error("BLOCKFROST_API_KEY environment variable not set");
+}
+
+if (!ESCROW_SCRIPT_BASE64) {
+  throw new Error("ESCROW_SCRIPT_BASE64 environment variable not set");
+}
+
+if (!ESCROW_SCRIPT_ADDRESS) {
+  throw new Error("ESCROW_SCRIPT_ADDRESS environment variable not set");
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type",
 };
 
-// ============================================================================
-// Types
-// ============================================================================
+/* ============================================================================
+   PLUTUS DATA STRUCTURES (matching EscrowContract.hs)
+============================================================================ */
+
+// EscrowDatum = { buyer: PubKeyHash, seller: PubKeyHash, deadline: POSIXTime }
+const EscrowDatum = Data.Object({
+  buyer: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  seller: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  deadline: Data.BigInt,
+});
+
+type EscrowDatum = Data.Static<typeof EscrowDatum>;
+
+// EscrowAction = Release (0) | Refund (1)
+const EscrowAction = Data.Enum([
+  Data.Unit, // Release = 0
+  Data.Unit, // Refund = 1
+]);
+
+type EscrowAction = Data.Static<typeof EscrowAction>;
+
+/* ============================================================================
+   TYPES
+============================================================================ */
 
 interface FundRequest {
   action: "buildFundTx";
   buyerAddress: string;
   sellerAddress: string;
-  amount: string; // lovelace as string
-  deadlineSlot: number;
+  amount: string; // lovelace
+  deadlineMs: number; // milliseconds since epoch
 }
 
 interface SpendRequest {
@@ -30,63 +72,72 @@ interface SpendRequest {
   sellerAddress: string;
   escrowUtxoTxHash: string;
   escrowUtxoIndex: number;
-  deadlineSlot: number;
+  deadlineMs: number;
 }
 
-type TxBuilderRequest = FundRequest | SpendRequest;
+type TxRequest = FundRequest | SpendRequest;
 
-// ============================================================================
-// Native Script builder
-// ============================================================================
+/* ============================================================================
+   HELPERS
+============================================================================ */
 
 /**
- * Build a native script for escrow:
- *  - Release: requires BOTH buyer AND seller signatures (before deadline)
- *  - Refund:  requires buyer signature AND deadline has passed
- *
- * Script structure (any-of):
- *   1. all-of [sig(buyer), sig(seller)]          → release
- *   2. all-of [sig(buyer), after(deadlineSlot)]   → refund
+ * Decode base64 to hex string
  */
-function buildEscrowNativeScript(
-  lucid: Lucid,
-  buyerAddress: string,
-  sellerAddress: string,
-  deadlineSlot: number
-): { script: Script; scriptAddress: string } {
-  const buyerPkh = paymentCredentialOf(lucid, buyerAddress);
-  const sellerPkh = paymentCredentialOf(lucid, sellerAddress);
-
-  const nativeScript = {
-    type: "any",
-    scripts: [
-      {
-        type: "all",
-        scripts: [
-          { type: "sig", keyHash: buyerPkh },
-          { type: "sig", keyHash: sellerPkh },
-        ],
-      },
-      {
-        type: "all",
-        scripts: [
-          { type: "sig", keyHash: buyerPkh },
-          { type: "after", slot: deadlineSlot },
-        ],
-      },
-    ],
-  };
-
-  // nativeScriptFromJson returns { type: "Native", script: cborHex }
-  const script: Script = lucid.utils.nativeScriptFromJson(nativeScript);
-  const scriptAddress = lucid.utils.validatorToAddress(script);
-
-  return { script, scriptAddress };
+function base64ToHex(base64: string): string {
+  const bytes = atob(base64);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    const byte = bytes.charCodeAt(i);
+    hex += ("0" + byte.toString(16)).slice(-2);
+  }
+  return hex;
 }
 
-// ============================================================================
-// Main handler
-// ============================================================================
+/**
+ * Get the payment credential (public key hash) from an address
+ */
+function getPaymentKeyHash(lucid: Lucid, address: string): string {
+  const details = lucid.utils.getAddressDetails(address);
+  const paymentCred = details.paymentCredential;
+  
+  if (!paymentCred || !paymentCred.hash) {
+    throw new Error(`Invalid payment address: ${address}`);
+  }
+  
+  return paymentCred.hash;
+}
+
+/**
+ * Initialize Lucid for Preprod
+ */
+async function initLucid(): Promise<Lucid> {
+  const lucid = await Lucid.new(
+    new Blockfrost(
+      "https://cardano-preprod.blockfrost.io/api/v0",
+      BLOCKFROST_API_KEY!
+    ),
+    "Preprod"
+  );
+  
+  return lucid;
+}
+
+/**
+ * Load the Escrow spending validator from base64-encoded script
+ */
+function loadEscrowValidator(lucid: Lucid): SpendingValidator {
+  const scriptHex = base64ToHex(ESCROW_SCRIPT_BASE64!);
+  
+  return {
+    type: "PlutusV2",
+    script: scriptHex,
+  };
+}
+
+/* ============================================================================
+   HTTP HANDLER
+============================================================================ */
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -94,169 +145,225 @@ serve(async (req) => {
   }
 
   try {
-    const BLOCKFROST_API_KEY = Deno.env.get("BLOCKFROST_API_KEY");
-    if (!BLOCKFROST_API_KEY) {
-      throw new Error("BLOCKFROST_API_KEY is not configured");
-    }
-
-    const body: TxBuilderRequest = await req.json();
-
-    const lucid = await Lucid.new(
-      new Blockfrost(
-        "https://cardano-preprod.blockfrost.io/api/v0",
-        BLOCKFROST_API_KEY
-      ),
-      "Preprod"
-    );
+    const lucid = await initLucid();
+    const validator = loadEscrowValidator(lucid);
+    const body: TxRequest = await req.json();
 
     let result;
 
     switch (body.action) {
       case "buildFundTx":
-        result = await buildFundTx(lucid, body as FundRequest);
+        result = await buildFundTx(lucid, body);
         break;
       case "buildReleaseTx":
-        result = await buildSpendTx(lucid, body as SpendRequest, "release");
+        result = await buildSpendTx(lucid, validator, body, "release");
         break;
       case "buildRefundTx":
-        result = await buildSpendTx(lucid, body as SpendRequest, "refund");
+        result = await buildSpendTx(lucid, validator, body, "refund");
         break;
       default:
-        throw new Error(`Unknown action: ${(body as { action: string }).action}`);
+        throw new Error(`Unknown action: ${(body as any).action}`);
     }
 
     return new Response(JSON.stringify(result), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (error: unknown) {
-    console.error("Transaction builder error:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
+  } catch (err) {
+    console.error("[Escrow TX Builder] Error:", err);
+    
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      JSON.stringify({
+        success: false,
+        error: errorMessage,
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
       }
     );
   }
 });
 
-// ============================================================================
-// FUND – buyer sends ADA to the native-script escrow address
-// ============================================================================
+/* ============================================================================
+   FUND TX: Buyer → Script Address with Datum
+============================================================================ */
 
-async function buildFundTx(lucid: Lucid, params: FundRequest) {
-  const { buyerAddress, sellerAddress, amount, deadlineSlot } = params;
-
-  // Derive the escrow native-script address deterministically
-  const { scriptAddress } = buildEscrowNativeScript(
-    lucid,
+async function buildFundTx(lucid: Lucid, params: FundRequest): Promise<any> {
+  const {
     buyerAddress,
     sellerAddress,
-    deadlineSlot
-  );
+    amount,
+    deadlineMs,
+  } = params;
 
-  // Query buyer UTxOs from Blockfrost (no CIP-30 CBOR decoding needed)
-  lucid.selectWalletFrom({ address: buyerAddress });
+  console.log("[buildFundTx] Creating escrow:", {
+    buyer: buyerAddress.slice(0, 20) + "...",
+    seller: sellerAddress.slice(0, 20) + "...",
+    amount,
+    deadline: new Date(deadlineMs).toISOString(),
+  });
 
+  // Extract payment key hashes
+  const buyerKeyHash = getPaymentKeyHash(lucid, buyerAddress);
+  const sellerKeyHash = getPaymentKeyHash(lucid, sellerAddress);
+
+  // Build datum
+  const datum: EscrowDatum = {
+    buyer: buyerKeyHash,
+    seller: sellerKeyHash,
+    deadline: BigInt(deadlineMs),
+  };
+
+  // Serialize datum using Lucid's Data module
+  const datumCBOR = Data.to(datum, EscrowDatum);
+
+  console.log("[buildFundTx] Datum:", {
+    buyer: buyerKeyHash,
+    seller: sellerKeyHash,
+    deadline: deadlineMs,
+  });
+
+  // Build transaction: send funds to script address with inline datum
   const tx = await lucid
     .newTx()
-    .payToAddress(scriptAddress, { lovelace: BigInt(amount) })
-    .complete();
+    .payToContract(
+      ESCROW_SCRIPT_ADDRESS!,
+      { inline: datumCBOR },
+      { lovelace: BigInt(amount) }
+    )
+    .complete({ localUPLCEval: false });
+
+  console.log("[buildFundTx] Transaction built successfully");
 
   return {
     success: true,
     txCbor: tx.toString(),
-    scriptAddress,
-    scriptOutputIndex: 0,
+    scriptAddress: ESCROW_SCRIPT_ADDRESS,
+    datumCBOR,
+    description: "Unsigned transaction. Sign with buyerAddress before submitting.",
   };
 }
 
-// ============================================================================
-// SPEND – collect UTxO from native-script address (release or refund)
-// ============================================================================
+/* ============================================================================
+   SPEND TX: Release or Refund from Script Address
+============================================================================ */
 
 async function buildSpendTx(
   lucid: Lucid,
+  validator: SpendingValidator,
   params: SpendRequest,
-  txType: "release" | "refund"
-) {
+  kind: "release" | "refund"
+): Promise<any> {
   const {
     buyerAddress,
     sellerAddress,
     escrowUtxoTxHash,
     escrowUtxoIndex,
-    deadlineSlot,
+    deadlineMs,
   } = params;
 
-  const { script, scriptAddress } = buildEscrowNativeScript(
-    lucid,
-    buyerAddress,
-    sellerAddress,
-    deadlineSlot
-  );
+  console.log(`[buildSpendTx:${kind}] Starting:`, {
+    scriptAddress: ESCROW_SCRIPT_ADDRESS,
+    escrowUtxo: `${escrowUtxoTxHash}#${escrowUtxoIndex}`,
+  });
 
-  // Query the escrow UTxO at the script address
-  const scriptUtxos = await lucid.utxosAt(scriptAddress);
-  const escrowUtxo = scriptUtxos.find(
+  // Extract payment key hashes (needed for redeemer validation)
+  const buyerKeyHash = getPaymentKeyHash(lucid, buyerAddress);
+  const sellerKeyHash = getPaymentKeyHash(lucid, sellerAddress);
+
+  // Fetch UTxOs at script address
+  let utxos: UTxO[];
+  try {
+    utxos = await lucid.utxosAt(ESCROW_SCRIPT_ADDRESS!);
+    console.log(`[buildSpendTx:${kind}] Found ${utxos.length} UTxO(s) at script`);
+  } catch (err) {
+    throw new Error(
+      `Failed to fetch UTxOs at script address: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  // Find the specific escrow UTxO
+  const escrowUtxo = utxos.find(
     (u: UTxO) =>
       u.txHash === escrowUtxoTxHash && u.outputIndex === escrowUtxoIndex
   );
 
   if (!escrowUtxo) {
+    console.error(
+      `[buildSpendTx:${kind}] Escrow UTxO not found. Available:`,
+      utxos.map((u) => `${u.txHash}#${u.outputIndex}`)
+    );
     throw new Error(
-      "Escrow UTxO not found on-chain. It may have already been spent."
+      `Escrow UTxO not found: ${escrowUtxoTxHash}#${escrowUtxoIndex}`
     );
   }
 
-  const recipient = txType === "release" ? sellerAddress : buyerAddress;
-  const escrowLovelace = escrowUtxo.assets["lovelace"] || 0n;
+  // Verify datum is attached
+  if (!escrowUtxo.datum) {
+    throw new Error("Escrow UTxO has no datum attached");
+  }
 
-  // Use buyer address as the wallet for coin selection (fee inputs)
-  lucid.selectWalletFrom({ address: buyerAddress });
+  console.log(`[buildSpendTx:${kind}] Found escrow UTxO:`, {
+    value: escrowUtxo.assets,
+    datum: escrowUtxo.datum,
+  });
 
-  let txBuilder = lucid
+  // Determine recipient and redeemer
+  const recipient = kind === "release" ? sellerAddress : buyerAddress;
+  const redeemer: EscrowAction = kind === "release" ? [0n] : [1n]; // 0 = Release, 1 = Refund
+
+  console.log(`[buildSpendTx:${kind}] Building ${kind} redeemer:`, redeemer);
+
+  // Serialize redeemer
+  const redeemerCBOR = Data.to(redeemer, EscrowAction);
+
+  // Build transaction
+  let tx = lucid
     .newTx()
-    .collectFrom([escrowUtxo])
-    .attachSpendingValidator(script)
-    .payToAddress(recipient, { lovelace: escrowLovelace });
+    .collectFrom([escrowUtxo], redeemerCBOR)  // ← Attach redeemer here
+    .attachSpendingValidator(validator);
 
-  // Validity interval
-  if (txType === "refund") {
-    // For refund the "after" timelock must be satisfied
-    txBuilder = txBuilder.validFrom(Date.now());
-  } else {
-    // Release requires both signatures, no timelock constraint needed
-    // but we add a TTL for safety
-    txBuilder = txBuilder.validTo(Date.now() + 600_000); // 10 min TTL
+  // For RELEASE: both buyer and seller must sign
+  // For REFUND: only buyer must sign (time check done on-chain)
+  if (kind === "release") {
+    tx = tx.addSigner(buyerAddress).addSigner(sellerAddress);
+    console.log(`[buildSpendTx:release] Added signers: buyer + seller`);
+  } else if (kind === "refund") {
+    tx = tx.addSigner(buyerAddress);
+    console.log(`[buildSpendTx:refund] Added signer: buyer`);
+    
+    // Set time to after deadline for refund validity check
+    tx = tx.validFrom(deadlineMs);
   }
 
-  // Required signers
-  txBuilder = txBuilder.addSigner(buyerAddress);
-  if (txType === "release") {
-    txBuilder = txBuilder.addSigner(sellerAddress);
+  // Send funds to recipient
+  tx = tx.payToAddress(recipient, escrowUtxo.assets);
+
+  // Complete the transaction
+  let unsignedTx;
+  try {
+    unsignedTx = await tx.complete({ localUPLCEval: false });
+  } catch (err) {
+    throw new Error(
+      `Failed to build ${kind} transaction: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 
-  const tx = await txBuilder.complete();
+  console.log(`[buildSpendTx:${kind}] Transaction built successfully`);
 
   return {
     success: true,
-    txCbor: tx.toString(),
-    scriptAddress,
+    txCbor: unsignedTx.toString(),
+    scriptAddress: ESCROW_SCRIPT_ADDRESS,
+    redeemerCBOR,
+    kind,
+    requiredSigners: kind === "release" ? ["buyer", "seller"] : ["buyer"],
+    validFrom: kind === "refund" ? deadlineMs : undefined,
+    description:
+      kind === "release"
+        ? "Unsigned transaction. Must be signed by BOTH buyer and seller."
+        : "Unsigned transaction. Must be signed by buyer. Valid only after deadline.",
   };
-}
-
-// ============================================================================
-// Helper: extract payment credential hash from a bech32 address
-// ============================================================================
-
-function paymentCredentialOf(lucid: Lucid, address: string): string {
-  const details = lucid.utils.getAddressDetails(address);
-  const pkh = details.paymentCredential?.hash;
-  if (!pkh) {
-    throw new Error(`Cannot extract payment credential from ${address}`);
-  }
-  return pkh;
 }
