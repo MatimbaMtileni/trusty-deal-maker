@@ -1,5 +1,5 @@
 // ============================================================================
-// Transaction Builder Service – Native Script escrow via edge function
+// Transaction Builder Service – Plutus V2 escrow via edge function
 // ============================================================================
 
 import { supabase } from '@/integrations/supabase/client';
@@ -43,17 +43,15 @@ async function callTxBuilder(params: Record<string, unknown>): Promise<TxBuildRe
 }
 
 // ============================================================================
-// Slot conversion helper
+// Deadline conversion helper
 // ============================================================================
 
 /**
- * Convert a JS Date to a Cardano Preprod slot number.
- * Preprod genesis: slot 0 = 2022-07-25T00:00:00Z (Unix 1658707200)
- * 1 slot = 1 second
+ * Convert a JS Date to milliseconds since epoch (POSIX time).
+ * This matches the new Plutus V2 Edge Function format.
  */
-function dateToSlot(date: Date): number {
-  const PREPROD_GENESIS_UNIX = 1658707200;
-  return Math.floor(date.getTime() / 1000) - PREPROD_GENESIS_UNIX;
+function dateToMilliseconds(date: Date): number {
+  return date.getTime();
 }
 
 // ============================================================================
@@ -70,14 +68,14 @@ export async function executeEscrowFund(
   }
 ): Promise<{ success: boolean; txHash?: string; outputIndex?: number; scriptAddress?: string; error?: string }> {
   try {
-    const deadlineSlot = dateToSlot(params.deadline);
+    const deadlineMs = dateToMilliseconds(params.deadline);
 
     const buildResult = await callTxBuilder({
       action: 'buildFundTx',
       buyerAddress: params.buyerAddress,
       sellerAddress: params.sellerAddress,
       amount: params.amount.toString(),
-      deadlineSlot,
+      deadlineMs,
     });
 
     if (!buildResult.success || !buildResult.txCbor) {
@@ -150,7 +148,7 @@ async function executeSpend(
   action: 'buildReleaseTx' | 'buildRefundTx'
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   try {
-    const deadlineSlot = dateToSlot(params.deadline);
+    const deadlineMs = dateToMilliseconds(params.deadline);
 
     const buildResult = await callTxBuilder({
       action,
@@ -158,7 +156,7 @@ async function executeSpend(
       sellerAddress: params.sellerAddress,
       escrowUtxoTxHash: params.escrowUtxoTxHash,
       escrowUtxoIndex: params.escrowUtxoIndex,
-      deadlineSlot,
+      deadlineMs,
     });
 
     if (!buildResult.success || !buildResult.txCbor) {
