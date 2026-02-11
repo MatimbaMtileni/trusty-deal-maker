@@ -38,9 +38,23 @@ main = do
             BS8.writeFile "escrow.base64" base64
 
             putStrLn "✅ escrow.base64 written"
+            
+            -- 3️⃣ Print Base64 for environment variable
+            putStrLn ""
+            putStrLn "ESCROW_SCRIPT_BASE64="
+            BS8.putStr base64
+            putStrLn ""
+            
             putStrLn ""
             putStrLn "Next steps:"
-            putStrLn "  cardano-cli address build \\"
-            putStrLn "    --payment-script-file escrow.plutus \\"
-            putStrLn "    --testnet-magic 1 \\"
-            putStrLn "    --out-file escrow.addr"
+            putStrLn "  1. Build script address:"
+            putStrLn "     cardano-cli address build \\"
+            putStrLn "       --payment-script-file escrow.plutus \\"
+            putStrLn "       --testnet-magic 1 \\"
+            putStrLn "       --out-file escrow.addr"
+            putStrLn ""
+            putStrLn "  2. Copy the address and use as ESCROW_SCRIPT_ADDRESS"
+            putStrLn ""
+            putStrLn "  3. Add to .env.local:"
+            putStrLn "     ESCROW_SCRIPT_BASE64=<base64_value_above>"
+            putStrLn "     ESCROW_SCRIPT_ADDRESS=<address_from_step_1>"

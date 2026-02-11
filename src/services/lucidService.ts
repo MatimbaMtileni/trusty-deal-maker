@@ -13,8 +13,24 @@ import {
   UTxO,
 } from './cardano';
 
+// Import Plutus script configuration
+import { 
+  getScriptBase64, 
+  getScriptAddress, 
+  getScriptVerificationStatus,
+  isScriptDeployed,
+} from './cardano/scriptRegistry';
+
 // Re-export types
 export type { CIP30WalletAPI, UTxO };
+
+// Re-export script utilities
+export { 
+  getScriptBase64, 
+  getScriptAddress, 
+  getScriptVerificationStatus,
+  isScriptDeployed,
+};
 
 export interface LucidConfig {
   network: 'Mainnet' | 'Preprod' | 'Preview';

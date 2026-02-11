@@ -243,8 +243,11 @@ serve(async (req: Request): Promise<Response> => {
 
     if (body.action === "release" || body.action === "refund") {
       const { escrow_id, tx_hash } = body as UpdateEscrowRequest;
+      
+      console.log(`[${body.action.toUpperCase()}] Processing escrow_id: ${escrow_id}, userId: ${userId}`);
 
       if (!escrow_id || !tx_hash) {
+        console.error(`[${body.action.toUpperCase()}] Missing fields: escrow_id=${escrow_id}, tx_hash=${tx_hash}`);
         return new Response(
           JSON.stringify({ error: SAFE_ERRORS.MISSING_FIELDS }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -253,6 +256,7 @@ serve(async (req: Request): Promise<Response> => {
 
       // Validate tx_hash format
       if (!isValidTxHash(tx_hash)) {
+        console.error(`[${body.action.toUpperCase()}] Invalid tx_hash format: ${tx_hash}`);
         return new Response(
           JSON.stringify({ error: SAFE_ERRORS.INVALID_TX_HASH }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -266,7 +270,12 @@ serve(async (req: Request): Promise<Response> => {
         .eq("id", escrow_id)
         .single();
 
+      if (fetchError) {
+        console.error(`[${body.action.toUpperCase()}] Escrow fetch error:`, fetchError);
+      }
+      
       if (fetchError || !escrow) {
+        console.error(`[${body.action.toUpperCase()}] Escrow not found or fetch error`);
         return new Response(
           JSON.stringify({ error: SAFE_ERRORS.ESCROW_NOT_FOUND }),
           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -277,11 +286,13 @@ serve(async (req: Request): Promise<Response> => {
       // This is intentional - in a blockchain escrow, the buyer holds the power
       // to release funds to seller or reclaim after deadline
       const isBuyer = escrow.buyer_user_id === userId;
+      console.log(`[${body.action.toUpperCase()}] Buyer check: escrow.buyer_user_id=${escrow.buyer_user_id}, userId=${userId}, isBuyer=${isBuyer}`);
       
       if (!isBuyer) {
         const errorMessage = body.action === "release" 
           ? SAFE_ERRORS.ONLY_BUYER_RELEASE 
           : SAFE_ERRORS.ONLY_BUYER_REFUND;
+        console.error(`[${body.action.toUpperCase()}] User is not buyer: ${errorMessage}`);
         return new Response(
           JSON.stringify({ error: errorMessage }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -289,6 +300,7 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       if (escrow.status !== "active") {
+        console.error(`[${body.action.toUpperCase()}] Escrow not active, status: ${escrow.status}`);
         return new Response(
           JSON.stringify({ error: SAFE_ERRORS.ESCROW_NOT_ACTIVE }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -299,7 +311,9 @@ serve(async (req: Request): Promise<Response> => {
       if (body.action === "refund") {
         const now = new Date();
         const deadline = new Date(escrow.deadline);
+        console.log(`[REFUND] Deadline check: now=${now.toISOString()}, deadline=${deadline.toISOString()}, passed=${now >= deadline}`);
         if (now < deadline) {
+          console.error(`[REFUND] Deadline has not passed yet`);
           return new Response(
             JSON.stringify({ error: SAFE_ERRORS.REFUND_DEADLINE_NOT_PASSED }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -309,7 +323,9 @@ serve(async (req: Request): Promise<Response> => {
        
        // For multi-sig release, check both parties have signed
        if (body.action === "release" && escrow.requires_multi_sig) {
+         console.log(`[RELEASE] Multi-sig check: requires_multi_sig=${escrow.requires_multi_sig}, buyer_signed_at=${escrow.buyer_signed_at}, seller_signed_at=${escrow.seller_signed_at}`);
          if (!escrow.buyer_signed_at || !escrow.seller_signed_at) {
+           console.error(`[RELEASE] Multi-sig not complete`);
            return new Response(
              JSON.stringify({ error: SAFE_ERRORS.MULTI_SIG_REQUIRED }),
              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -320,6 +336,8 @@ serve(async (req: Request): Promise<Response> => {
       const newStatus = body.action === "release" ? "completed" : "refunded";
       const txType = body.action === "release" ? "released" : "refunded";
       const toAddress = body.action === "release" ? escrow.seller_address : escrow.buyer_address;
+      
+      console.log(`[${body.action.toUpperCase()}] Updating escrow status to: ${newStatus}`);
 
       // Update escrow status
       const { data: updatedEscrow, error: updateError } = await supabase
@@ -330,12 +348,14 @@ serve(async (req: Request): Promise<Response> => {
         .single();
 
       if (updateError) {
-        console.error("Escrow update error:", updateError);
+        console.error(`[${body.action.toUpperCase()}] Escrow update error:`, updateError);
         return new Response(
           JSON.stringify({ error: sanitizeDbError(updateError) }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      
+      console.log(`[${body.action.toUpperCase()}] Escrow status updated successfully`);
 
       // Insert transaction
       const { data: transaction, error: txError } = await supabase

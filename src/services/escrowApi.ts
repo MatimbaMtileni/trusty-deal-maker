@@ -1,6 +1,29 @@
 import { supabase } from '@/integrations/supabase/client';
+import { 
+  getScriptBase64, 
+  getScriptAddress, 
+  isScriptDeployed,
+} from './cardano/scriptRegistry';
 
 const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/escrow-transactions`;
+
+/**
+ * Verify that the Plutus script is properly configured
+ */
+function verifyScriptConfiguration(): void {
+  if (!isScriptDeployed()) {
+    const scriptBase64 = getScriptBase64();
+    const scriptAddress = getScriptAddress();
+    
+    const missingVars = [];
+    if (!scriptBase64) missingVars.push('VITE_ESCROW_SCRIPT_BASE64');
+    if (!scriptAddress) missingVars.push('VITE_ESCROW_SCRIPT_ADDRESS');
+    
+    throw new Error(
+      `Plutus escrow script not configured. Missing environment variables: ${missingVars.join(', ')}`
+    );
+  }
+}
 
 interface CreateEscrowParams {
   buyer_address: string;
@@ -26,6 +49,8 @@ interface EscrowActionParams {
  
 export const escrowApi = {
   async createEscrow(params: CreateEscrowParams) {
+    verifyScriptConfiguration();
+    
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
@@ -50,51 +75,81 @@ export const escrowApi = {
   },
 
   async releaseEscrow(params: EscrowActionParams) {
+    verifyScriptConfiguration();
+    
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
-    const response = await fetch(FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        action: 'release',
-        ...params,
-      }),
-    });
+    try {
+      const response = await fetch(FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'release',
+          ...params,
+        }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to release escrow');
+      if (!response.ok) {
+        let errorMsg = 'Failed to release escrow';
+        try {
+          const error = await response.json();
+          errorMsg = error.error || error.message || errorMsg;
+        } catch {
+          errorMsg = `Server error (${response.status}): ${response.statusText}`;
+        }
+        throw new Error(errorMsg);
+      }
+
+      return response.json();
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to release escrow: Unknown error');
     }
-
-    return response.json();
   },
 
   async refundEscrow(params: EscrowActionParams) {
+    verifyScriptConfiguration();
+    
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
-    const response = await fetch(FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        action: 'refund',
-        ...params,
-      }),
-    });
+    try {
+      const response = await fetch(FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'refund',
+          ...params,
+        }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to refund escrow');
+      if (!response.ok) {
+        let errorMsg = 'Failed to refund escrow';
+        try {
+          const error = await response.json();
+          errorMsg = error.error || error.message || errorMsg;
+        } catch {
+          errorMsg = `Server error (${response.status}): ${response.statusText}`;
+        }
+        throw new Error(errorMsg);
+      }
+
+      return response.json();
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to refund escrow: Unknown error');
     }
-
-    return response.json();
   },
 
    async signEscrow(params: SignEscrowParams) {
@@ -187,5 +242,16 @@ export const escrowApi = {
       .eq('user_id', user.id);
 
     if (error) throw error;
+  },
+
+  /**
+   * Get Plutus script configuration (for verification)
+   */
+  getScriptConfig() {
+    return {
+      scriptBase64: getScriptBase64(),
+      scriptAddress: getScriptAddress(),
+      isDeployed: isScriptDeployed(),
+    };
   },
 };
