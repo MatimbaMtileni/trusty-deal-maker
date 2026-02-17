@@ -33,6 +33,7 @@ interface WalletContextType {
   refreshBalance: () => Promise<void>;
   signTx: (txCbor: string, partialSign?: boolean) => Promise<string>;
   submitTx: (signedTxCbor: string) => Promise<string>;
+  signData: (payload: string) => Promise<{ signature: string; key: string }>; 
 }
 
 const WalletContext = createContext<WalletContextType | null>(null);
@@ -122,6 +123,10 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return walletService.submitTx(signedTxCbor);
   }, []);
 
+  const signData = useCallback(async (payload: string): Promise<{ signature: string; key: string }> => {
+    return walletService.signData(payload);
+  }, []);
+
   // Convert to legacy WalletInfo format for backward compatibility
   const wallet: WalletInfo | null = walletState.connected ? {
     name: walletState.walletName || '',
@@ -147,6 +152,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         refreshBalance,
         signTx,
         submitTx,
+        signData,
       }}
     >
       {children}

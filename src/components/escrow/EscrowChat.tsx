@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWallet } from '@/contexts/WalletContext';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 
@@ -41,9 +42,11 @@ export const EscrowChat: React.FC<EscrowChatProps> = ({
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user: authUser } = useAuth();
+  const { wallet, signData } = useWallet();
   const navigate = useNavigate();
 
   const isParticipant = userAddress === buyerAddress || userAddress === sellerAddress;
@@ -119,17 +122,8 @@ export const EscrowChat: React.FC<EscrowChatProps> = ({
     e.preventDefault();
     if (!newMessage.trim() || !isParticipant) return;
 
-    if (!authUser) {
-      toast({
-        title: 'Sign in required',
-        description: 'Please sign in to your account to send messages.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setSending(true);
     const trimmed = newMessage.trim();
+    setSending(true);
 
     // Optimistic UI: add a pending message so sender sees it immediately
     const tempId = `temp-${Date.now()}`;
@@ -146,51 +140,100 @@ export const EscrowChat: React.FC<EscrowChatProps> = ({
     setNewMessage('');
 
     try {
-      const { data: insertedRows, error } = await supabase.from('escrow_messages').insert({
-        escrow_id: escrowId,
-        sender_address: userAddress,
-        content: trimmed,
-      }).select();
+      // 1) Authenticated user (existing path)
+      if (authUser) {
+        const { data: insertedRows, error } = await supabase.from('escrow_messages').insert({
+          escrow_id: escrowId,
+          sender_address: userAddress,
+          content: trimmed,
+        }).select();
 
-      if (error) throw new Error(error.message || JSON.stringify(error));
+        if (error) throw new Error(error.message || JSON.stringify(error));
 
-      // Replace temp message with the actual inserted row (if returned)
-      if (insertedRows && insertedRows.length > 0) {
-        const inserted = insertedRows[0] as Message;
-        setMessages((prev) => prev.map((m) => (m.id === tempId ? inserted : m)));
+        if (insertedRows && insertedRows.length > 0) {
+          const inserted = insertedRows[0] as Message;
+          setMessages((prev) => prev.map((m) => (m.id === tempId ? inserted : m)));
+        }
 
-        // Escrow updated_at will be tracked via trigger if needed
+        // Trigger email notification for the other participant (fire-and-forget)
+        try {
+          const recipientAddress = userAddress === buyerAddress ? sellerAddress : buyerAddress;
+          const notifyResp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-notification`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            },
+            body: JSON.stringify({
+              type: 'message_received',
+              escrow_id: escrowId,
+              recipient_address: recipientAddress,
+              data: {
+                message: trimmed,
+                base_url: window.location.origin,
+              },
+            }),
+          });
+
+          if (!notifyResp.ok) {
+            const txt = await notifyResp.text();
+            console.warn('Notification function returned non-OK:', notifyResp.status, txt);
+          }
+        } catch (notifyErr) {
+          console.error('Failed to trigger notification:', notifyErr);
+        }
+
+        return;
       }
 
-      // Trigger email notification for the other participant
-      try {
-        const recipientAddress = userAddress === buyerAddress ? sellerAddress : buyerAddress;
-        // Fire-and-forget; don't block UI on notification failure
-        const notifyResp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-notification`, {
+      // 2) Wallet-only user (no supabase auth) — use wallet sign + Edge Function
+      if (!authUser && wallet && signData && wallet.address === userAddress) {
+        // Payload must include escrow and timestamp to prevent replay
+        const payload = JSON.stringify({ escrow_id: escrowId, content: trimmed, ts: Date.now(), address: wallet.address });
+        const { signature, key } = await signData(payload);
+
+        const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-wallet-message`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            // include publishable key so Supabase can validate the request if configured
             'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
-          body: JSON.stringify({
-            type: 'message_received',
-            escrow_id: escrowId,
-            recipient_address: recipientAddress,
-            data: {
-              message: trimmed,
-              base_url: window.location.origin,
-            },
-          }),
+          body: JSON.stringify({ escrow_id: escrowId, content: trimmed, sender_address: wallet.address, payload, signature, key }),
         });
 
-        if (!notifyResp.ok) {
-          const txt = await notifyResp.text();
-          console.warn('Notification function returned non-OK:', notifyResp.status, txt);
+        if (!resp.ok) {
+          // try to parse structured error from function
+          let serverMsg = `${resp.status} ${resp.statusText}`;
+          try {
+            const j = await resp.json();
+            serverMsg = j?.error || JSON.stringify(j);
+          } catch {
+            const txt = await resp.text();
+            serverMsg = txt || serverMsg;
+          }
+          throw new Error(serverMsg);
         }
-      } catch (notifyErr) {
-        console.error('Failed to trigger notification:', notifyErr);
+
+        const result = await resp.json();
+        // Expect { success: true, message: <inserted row> }
+        if (result?.message) {
+          setMessages((prev) => prev.map((m) => (m.id === tempId ? result.message : m)));
+          setSendError(null);
+        }
+
+        return;
       }
+
+      // Otherwise, user is not allowed to send
+      toast({
+        title: 'Sign in required',
+        description: 'Please sign in to your account to send messages.',
+        variant: 'destructive',
+      });
+
+      // Remove optimistic temp message
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+
     } catch (error) {
       console.error('Error sending message:', error);
       const errMsg =
@@ -205,15 +248,35 @@ export const EscrowChat: React.FC<EscrowChatProps> = ({
       // Remove optimistic temp message
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
 
-      const permissionIssue = errMsg.toLowerCase().includes('permission') || errMsg.toLowerCase().includes('row level') || errMsg.toLowerCase().includes('not authenticated');
+      const lower = (errMsg || '').toLowerCase();
+      const signatureIssue = lower.includes('invalid signature') || lower.includes('signature');
+      const keyMismatch = lower.includes('public key') || lower.includes('does not match address') || lower.includes('payment key');
 
-      toast({
-        variant: 'destructive',
-        title: 'Failed to send message',
-        description: permissionIssue
-          ? 'You need to sign in and link your wallet to send messages. Go to Profile → Link Wallet.'
-          : errMsg || 'Unknown error',
-      });
+      if (signatureIssue) {
+        setSendError('Signature verification failed — please reconnect the sending wallet and try again.');
+        toast({
+          variant: 'destructive',
+          title: 'Signature verification failed',
+          description: 'Wallet signature could not be verified for this message. Reconnect/authorize your wallet and resend.',
+        });
+      } else if (keyMismatch) {
+        setSendError('Wallet public key does not match the sender address — ensure you are using the correct wallet.');
+        toast({
+          variant: 'destructive',
+          title: 'Wallet/address mismatch',
+          description: 'The connected wallet does not control the claimed sender address.',
+        });
+      } else {
+        setSendError(null);
+        const permissionIssue = lower.includes('permission') || lower.includes('row level') || lower.includes('not authenticated');
+        toast({
+          variant: 'destructive',
+          title: 'Failed to send message',
+          description: permissionIssue
+            ? 'You need to sign in and link your wallet to send messages. Go to Profile → Link Wallet.'
+            : errMsg || 'Unknown error',
+        });
+      }
     } finally {
       setSending(false);
     }
@@ -301,21 +364,26 @@ export const EscrowChat: React.FC<EscrowChatProps> = ({
         )}
       </ScrollArea>
 
-      <form onSubmit={handleSend} className="mt-4 flex gap-2">
-        <Input
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type a message..."
-          disabled={sending}
-          className="flex-1"
-        />
-        <Button type="submit" size="icon" disabled={!newMessage.trim() || sending}>
-          {sending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-        </Button>
+      <form onSubmit={handleSend} className="mt-4 flex flex-col gap-2">
+        <div className="flex gap-2">
+          <Input
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            disabled={sending}
+            className="flex-1"
+          />
+          <Button type="submit" size="icon" disabled={!newMessage.trim() || sending}>
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+        {sendError && (
+          <p className="text-xs text-destructive mt-1">{sendError}</p>
+        )}
       </form>
     </div>
   );

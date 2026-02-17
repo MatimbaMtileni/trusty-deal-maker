@@ -22,7 +22,7 @@ main = do
         scriptSBS     = SBS.toShort $ LBS.toStrict scriptCBOR
         plutusScript  = PlutusScriptSerialised scriptSBS
 
-    -- 1️⃣ Write .plutus (for cardano-cli)
+    -- Write .plutus (for cardano-cli)
     result <- writeFileTextEnvelope
         "escrow.plutus"
         (Just "Escrow Validator Script")
@@ -31,15 +31,15 @@ main = do
     case result of
         Left err -> putStrLn $ "Error writing script: " ++ show err
         Right () -> do
-            putStrLn "✅ escrow.plutus written"
+            putStrLn "escrow.plutus written"
 
-            -- 2️⃣ Write Base64 (for Lucid)
+            -- Write Base64 (for Lucid)
             let base64 = B64.encode $ SBS.fromShort scriptSBS
             BS8.writeFile "escrow.base64" base64
 
-            putStrLn "✅ escrow.base64 written"
+            putStrLn "escrow.base64 written"
             
-            -- 3️⃣ Print Base64 for environment variable
+            -- Print Base64 for environment variable
             putStrLn ""
             putStrLn "ESCROW_SCRIPT_BASE64="
             BS8.putStr base64

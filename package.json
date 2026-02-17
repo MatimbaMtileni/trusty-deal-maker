@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e:send-wallet-message": "node scripts/e2e-send-wallet-message.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -89,6 +90,8 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@noble/ed25519": "^1.7.1",
+    "@noble/hashes": "^1.4.2"
   }
 }

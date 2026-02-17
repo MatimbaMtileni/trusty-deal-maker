@@ -36,7 +36,17 @@ async function callTxBuilder(params: Record<string, unknown>): Promise<TxBuildRe
 
   if (error) {
     console.error('[TxBuilder] Edge function error:', error);
-    return { success: false, error: error.message };
+    // Try to provide a more helpful message to the UI
+    const parts: string[] = [];
+    if (error.message) parts.push(error.message);
+    // supabase error may contain details/status
+    // include them when available for easier debugging
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyErr = error as any;
+    if (anyErr.details) parts.push(String(anyErr.details));
+    if (anyErr.status) parts.push(`status=${anyErr.status}`);
+
+    return { success: false, error: parts.filter(Boolean).join(' — ') || 'Edge function error' };
   }
 
   return data as TxBuildResult;

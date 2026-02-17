@@ -11,20 +11,18 @@ import {
    ENVIRONMENT & CONFIGURATION
 ============================================================================ */
 
+// Load environment variables (do NOT throw at module init - return structured errors at runtime)
 const BLOCKFROST_API_KEY = Deno.env.get("BLOCKFROST_API_KEY");
 const ESCROW_SCRIPT_BASE64 = Deno.env.get("ESCROW_SCRIPT_BASE64");
 const ESCROW_SCRIPT_ADDRESS = Deno.env.get("ESCROW_SCRIPT_ADDRESS");
 
-if (!BLOCKFROST_API_KEY) {
-  throw new Error("BLOCKFROST_API_KEY environment variable not set");
-}
-
-if (!ESCROW_SCRIPT_BASE64) {
-  throw new Error("ESCROW_SCRIPT_BASE64 environment variable not set");
-}
-
-if (!ESCROW_SCRIPT_ADDRESS) {
-  throw new Error("ESCROW_SCRIPT_ADDRESS environment variable not set");
+// Helper to report missing env vars at request time
+function missingEnvVars(): string[] {
+  const missing: string[] = [];
+  if (!BLOCKFROST_API_KEY) missing.push('BLOCKFROST_API_KEY');
+  if (!ESCROW_SCRIPT_BASE64) missing.push('ESCROW_SCRIPT_BASE64');
+  if (!ESCROW_SCRIPT_ADDRESS) missing.push('ESCROW_SCRIPT_ADDRESS');
+  return missing;
 }
 
 const corsHeaders = {
@@ -144,44 +142,67 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Immediate runtime validation for environment
+  const missing = missingEnvVars();
+  if (missing.length > 0) {
+    console.error('[cardano-tx-builder] Missing env vars:', missing.join(', '));
+    return new Response(
+      JSON.stringify({ success: false, error: `Missing environment variables: ${missing.join(', ')}` }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     const lucid = await initLucid();
     const validator = loadEscrowValidator(lucid);
-    const body: TxRequest = await req.json();
+
+    let body: TxRequest | null = null;
+    try {
+      body = await req.json();
+    } catch (e) {
+      console.error('[cardano-tx-builder] Invalid JSON body', e);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid JSON body' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!body || typeof (body as any).action !== 'string') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Missing or invalid action' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     let result;
 
     switch (body.action) {
-      case "buildFundTx":
-        result = await buildFundTx(lucid, body);
+      case 'buildFundTx':
+        result = await buildFundTx(lucid, body as FundRequest);
         break;
-      case "buildReleaseTx":
-        result = await buildSpendTx(lucid, validator, body, "release");
+      case 'buildReleaseTx':
+        result = await buildSpendTx(lucid, validator, body as SpendRequest, 'release');
         break;
-      case "buildRefundTx":
-        result = await buildSpendTx(lucid, validator, body, "refund");
+      case 'buildRefundTx':
+        result = await buildSpendTx(lucid, validator, body as SpendRequest, 'refund');
         break;
       default:
-        throw new Error(`Unknown action: ${(body as any).action}`);
+        result = { success: false, error: `Unknown action: ${(body as any).action}` };
     }
 
+    // Always return 200 with structured JSON so supabase.functions.invoke receives the body
     return new Response(JSON.stringify(result), {
       status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    console.error("[Escrow TX Builder] Error:", err);
-    
-    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    console.error('[cardano-tx-builder] Unexpected error:', err);
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+
+    // Return 200 with structured failure so frontend receives error message directly
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: errorMessage,
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      }
+      JSON.stringify({ success: false, error: errorMessage }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
