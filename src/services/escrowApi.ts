@@ -3,6 +3,9 @@ import {
   getScriptBase64, 
   getScriptAddress, 
   isScriptDeployed,
+  getExpectedScriptHash,
+  getComputedScriptHash,
+  isScriptHashVerified,
 } from './cardano/scriptRegistry';
 
 const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/escrow-transactions`;
@@ -21,6 +24,18 @@ function verifyScriptConfiguration(): void {
     
     throw new Error(
       `Plutus escrow script not configured. Missing environment variables: ${missingVars.join(', ')}`
+    );
+  }
+
+  const expectedHash = getExpectedScriptHash();
+  if (!expectedHash) {
+    throw new Error('Plutus script hash not configured. Missing environment variable: VITE_ESCROW_SCRIPT_HASH');
+  }
+
+  if (!isScriptHashVerified()) {
+    const computedHash = getComputedScriptHash();
+    throw new Error(
+      `Plutus script hash mismatch. Expected ${expectedHash}, got ${computedHash || 'unknown'}`
     );
   }
 }

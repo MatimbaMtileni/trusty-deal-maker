@@ -10,21 +10,34 @@ export function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-async function importEd25519(): Promise<any> {
+type Ed25519Module = {
+  verify: (signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array) => Promise<boolean>;
+};
+
+type Blake2bModule = {
+  blake2b: (input: Uint8Array, opts: { dkLen: number }) => Uint8Array;
+};
+
+type Bech32Like = {
+  decode: (address: string, limit?: number) => { words: number[] };
+  fromWords: (words: number[]) => number[];
+};
+
+async function importEd25519(): Promise<Ed25519Module> {
   if (typeof Deno !== 'undefined') {
     return await import('https://esm.sh/@noble/ed25519@1.7.1');
   }
   return await import('@noble/ed25519');
 }
 
-async function importBlake2b(): Promise<any> {
+async function importBlake2b(): Promise<Blake2bModule> {
   if (typeof Deno !== 'undefined') {
     return await import('https://esm.sh/@noble/hashes@1.4.2/blake2b');
   }
   return await import('@noble/hashes/blake2b');
 }
 
-async function importBech32(): Promise<any> {
+async function importBech32(): Promise<{ bech32?: Bech32Like } & Bech32Like> {
   if (typeof Deno !== 'undefined') {
     return await import('https://esm.sh/bech32@1.1.4');
   }
@@ -38,7 +51,7 @@ export async function verifySignature(payload: string | Uint8Array, signatureHex
   const pk = hexToBytes(pubKeyHex);
   try {
     return await ed.verify(sig, payloadBytes, pk);
-  } catch (err) {
+  } catch {
     return false;
   }
 }
@@ -55,10 +68,10 @@ export async function publicKeyMatchesAddress(pubKeyHex: string, address: string
   try {
     // try bech32 decode
     const decoded = bech32.bech32 ? bech32.bech32.decode(address, 1023) : bech32.decode(address, 1023);
-    const words = decoded.words || decoded.words;
+    const words = decoded.words;
     const bytes = bech32.bech32 ? bech32.bech32.fromWords(words) : bech32.fromWords(words);
     addrBytes = new Uint8Array(bytes);
-  } catch (err) {
+  } catch {
     // fallback to hex
     if (/^[0-9a-fA-F]+$/.test(address)) {
       addrBytes = hexToBytes(address);

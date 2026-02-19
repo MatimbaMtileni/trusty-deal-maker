@@ -27,8 +27,17 @@ const SAFE_ERRORS = {
   DUPLICATE_ESCROW: "An escrow with these details already exists",
   INVALID_REFERENCE: "Invalid reference data",
    MULTI_SIG_REQUIRED: "Both buyer and seller must sign to release funds",
-   ALREADY_SIGNED: "You have already signed this escrow",
+    ALREADY_SIGNED: "You have already signed this escrow",
+    DUPLICATE_TX_HASH: "Transaction hash has already been processed",
+    INVALID_JSON: "Invalid JSON payload",
 };
+
+function jsonResponse(status: number, payload: Record<string, unknown>): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 // Validation helpers
 function isValidCardanoAddress(address: string): boolean {
@@ -113,10 +122,7 @@ serve(async (req: Request): Promise<Response> => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(
-        JSON.stringify({ error: SAFE_ERRORS.UNAUTHORIZED }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse(401, { error: SAFE_ERRORS.UNAUTHORIZED, code: 'UNAUTHORIZED' });
     }
 
     const supabase = createClient(
@@ -130,24 +136,23 @@ serve(async (req: Request): Promise<Response> => {
     const { data: authData, error: authError } = await supabase.auth.getUser(token);
     
     if (authError || !authData?.user) {
-      return new Response(
-        JSON.stringify({ error: SAFE_ERRORS.UNAUTHORIZED }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse(401, { error: SAFE_ERRORS.UNAUTHORIZED, code: 'UNAUTHORIZED' });
     }
 
     const userId = authData.user.id;
-    const body: EscrowRequest = await req.json();
+    let body: EscrowRequest;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse(400, { error: SAFE_ERRORS.INVALID_JSON, code: 'INVALID_JSON' });
+    }
 
     if (body.action === "create") {
        const { buyer_address, seller_address, amount, deadline, description, tx_hash, requires_multi_sig, utxo_tx_hash, utxo_output_index } = body as CreateEscrowRequest;
 
       // Validate required fields exist
       if (!buyer_address || !seller_address || !amount || !deadline || !tx_hash) {
-        return new Response(
-          JSON.stringify({ error: SAFE_ERRORS.MISSING_FIELDS }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return jsonResponse(400, { error: SAFE_ERRORS.MISSING_FIELDS, code: 'MISSING_FIELDS' });
       }
 
       // Validate Cardano addresses
@@ -177,10 +182,18 @@ serve(async (req: Request): Promise<Response> => {
 
       // Validate tx_hash format
       if (!isValidTxHash(tx_hash)) {
-        return new Response(
-          JSON.stringify({ error: SAFE_ERRORS.INVALID_TX_HASH }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return jsonResponse(400, { error: SAFE_ERRORS.INVALID_TX_HASH, code: 'INVALID_TX_HASH' });
+      }
+
+      const { data: duplicateTx } = await supabase
+        .from('escrow_transactions')
+        .select('id')
+        .eq('tx_hash', tx_hash)
+        .limit(1)
+        .maybeSingle();
+
+      if (duplicateTx) {
+        return jsonResponse(409, { error: SAFE_ERRORS.DUPLICATE_TX_HASH, code: 'DUPLICATE_TX_HASH' });
       }
 
       // Validate description length
@@ -248,19 +261,24 @@ serve(async (req: Request): Promise<Response> => {
 
       if (!escrow_id || !tx_hash) {
         console.error(`[${body.action.toUpperCase()}] Missing fields: escrow_id=${escrow_id}, tx_hash=${tx_hash}`);
-        return new Response(
-          JSON.stringify({ error: SAFE_ERRORS.MISSING_FIELDS }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return jsonResponse(400, { error: SAFE_ERRORS.MISSING_FIELDS, code: 'MISSING_FIELDS' });
       }
 
       // Validate tx_hash format
       if (!isValidTxHash(tx_hash)) {
         console.error(`[${body.action.toUpperCase()}] Invalid tx_hash format: ${tx_hash}`);
-        return new Response(
-          JSON.stringify({ error: SAFE_ERRORS.INVALID_TX_HASH }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return jsonResponse(400, { error: SAFE_ERRORS.INVALID_TX_HASH, code: 'INVALID_TX_HASH' });
+      }
+
+      const { data: duplicateTx } = await supabase
+        .from('escrow_transactions')
+        .select('id')
+        .eq('tx_hash', tx_hash)
+        .limit(1)
+        .maybeSingle();
+
+      if (duplicateTx) {
+        return jsonResponse(409, { error: SAFE_ERRORS.DUPLICATE_TX_HASH, code: 'DUPLICATE_TX_HASH' });
       }
 
       // Get escrow

@@ -155,8 +155,5 @@ To enable email notifications for the `send-notification` Supabase Function, set
 
 For local development, copy `supabase/functions/send-notification/.env.example` to `.env` and update the value. Keep that file out of version control.
 
-> Note: I have added your Resend API key to `supabase/functions/send-notification/.env` in this workspace and updated `.gitignore` so it remains untracked. If you'd like the secret set in the Supabase project (recommended for production), I can help add it to the project secrets next.
-
-If you want, I can add the key for you to the Supabase project (requires access) or show step-by-step how to set it in the dashboard.
-
+If you want, I can show step-by-step how to set the secret in the dashboard.
 
