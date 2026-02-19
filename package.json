@@ -93,5 +93,6 @@
     "vitest": "^3.2.4",
     "@noble/ed25519": "^1.7.1",
     "@noble/hashes": "^1.4.2"
-  }
+  },
+  "packageManager": "npm@10"
 }

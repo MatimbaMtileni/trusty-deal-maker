@@ -15,7 +15,7 @@ This guide walks you through compiling the Haskell Plutus contract and integrati
 ### Option A: Using Nix (Recommended for reproducibility)
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 # Install Nix (if not already installed)
 curl -L https://nixos.org/nix/install | sh
@@ -29,7 +29,7 @@ nix-shell
 ### Option B: Direct Cabal Build (requires GHC 8.10+ and Cabal 3.4+)
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 # Update cabal package database
 cabal update
@@ -45,19 +45,19 @@ cabal build all
 Once in the build environment:
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 # Compile the serialize-escrow executable
 cabal build serialize-escrow:exe:serialize-escrow
 
 # Find the executable path (usually in dist-newstyle/)
-SERIALIZE_EXE=$(find dist-newstyle -name serialize-escrow -type f | grep bin | head -1)
+SERIALIZE_EXE=$(find plutus-contract/dist-newstyle -name serialize-escrow -type f | grep bin | head -1)
 
 # Run it to generate escrow.plutus
 $SERIALIZE_EXE
 ```
 
-**Output**: `escrow.plutus` file in `/workspaces/trusty-deal-maker/escrow/`
+**Output**: `escrow.plutus` file in `/workspace/trusty-deal-maker/plutus-contract/`
 
 ---
 
@@ -66,7 +66,7 @@ $SERIALIZE_EXE
 Once you have `escrow.plutus`, get the script address for preprod:
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 cardano-cli address build \
   --payment-script-file escrow.plutus \
@@ -87,7 +87,7 @@ cat escrow.addr
 Your Edge Function needs the compiled script as base64-encoded bytes:
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 # Convert plutus script to hex
 xxd -p -c 256 escrow.plutus | tr -d '\n' > escrow.hex

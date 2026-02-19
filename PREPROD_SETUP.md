@@ -124,12 +124,12 @@ const tx = lucid
 ### Step 1: Compile Plutus Contract (Local or Nix)
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 # Nix (recommended)
 nix-shell
 cabal build serialize-escrow:exe:serialize-escrow
-$(find dist-newstyle -name serialize-escrow -type f | grep bin | head -1)
+$(find plutus-contract/dist-newstyle -name serialize-escrow -type f | grep bin | head -1)
 
 # Or direct cabal
 cabal build serialize-escrow

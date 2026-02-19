@@ -15,12 +15,12 @@
 ### 1. Compile Your Plutus Contract
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 # With Nix (recommended - reproducible)
 nix-shell
 cabal build serialize-escrow
-$(find dist-newstyle -name serialize-escrow -type f | grep bin | head -1)
+$(find plutus-contract/dist-newstyle -name serialize-escrow -type f | grep bin | head -1)
 
 # Or without Nix (if you have GHC 8.10+)
 cabal update
@@ -33,7 +33,7 @@ cabal exec serialize-escrow
 ### 2. Extract Script Address
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 cardano-cli address build \
   --payment-script-file escrow.plutus \
@@ -46,7 +46,7 @@ cat escrow.addr > ESCROW_SCRIPT_ADDRESS.txt
 ### 3. Encode Script to Base64
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 xxd -p -c 256 escrow.plutus | tr -d '\n' | xxd -r -p | base64 > ESCROW_SCRIPT_BASE64.txt
 cat ESCROW_SCRIPT_BASE64.txt
 ```

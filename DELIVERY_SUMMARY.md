@@ -45,23 +45,23 @@ I've completely rewritten the blockchain layer for **production-ready Plutus V2 
 ### Phase 1: Compile Plutus Contract (30 mins)
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 # Option A: With Nix (recommended)
 nix-shell
 cabal build serialize-escrow
-$(find dist-newstyle -name serialize-escrow -type f | grep bin | head -1)
+$(find plutus-contract/dist-newstyle -name serialize-escrow -type f | grep bin | head -1)
 
 # Option B: Direct cabal (if you have GHC 8.10+)
 cabal update && cabal build serialize-escrow && cabal exec serialize-escrow
 ```
 
-**Output**: `escrow.plutus` file in `/escrow/` directory
+**Output**: `escrow.plutus` file in `/plutus-contract/` directory
 
 ### Phase 2: Extract Configuration (5 mins)
 
 ```bash
-cd /workspaces/trusty-deal-maker/escrow
+cd /workspace/trusty-deal-maker/plutus-contract
 
 # Get script address
 cardano-cli address build --payment-script-file escrow.plutus --testnet-magic 1 --out-file escrow.addr
