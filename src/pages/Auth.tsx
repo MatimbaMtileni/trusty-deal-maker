@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
@@ -13,9 +13,15 @@ export const Auth: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, session } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (session) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [navigate, session]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,6 +39,14 @@ export const Auth: React.FC = () => {
           variant: 'destructive',
         });
       } else {
+        if (isSignUp && !session) {
+          toast({
+            title: 'Check your email',
+            description: 'Account created. Confirm your email, then sign in to continue.',
+          });
+          return;
+        }
+
         toast({
           title: isSignUp ? 'Account created!' : 'Welcome back!',
           description: isSignUp 
