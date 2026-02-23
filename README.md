@@ -41,9 +41,12 @@ There are two kinds of environment values:
 
 1) Client (Vite) envs (used by the frontend)
 - `VITE_SUPABASE_URL` (your Supabase project URL)
-- `VITE_SUPABASE_PUBLISHABLE_KEY` (your Supabase anon/publishable key)
+- `VITE_SUPABASE_PUBLISHABLE_KEY` (your Supabase anon/publishable key, preferred)
+- `VITE_SUPABASE_ANON_KEY` (legacy alias accepted by this app)
 
 Set these in a `.env` (or via your hosting provider) so the frontend can connect to Supabase.
+
+Note: Supabase Dashboard secrets like `SUPABASE_URL` / `SUPABASE_ANON_KEY` are for server/functions. For the browser app, set the `VITE_`-prefixed variables in your frontend environment.
 
 2) Server / Function envs (used by Supabase Functions)
 - `SUPABASE_URL` (project URL) - available automatically in Supabase Functions environment

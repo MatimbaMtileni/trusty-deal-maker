@@ -22,7 +22,7 @@ function normalizeAuthError(error: unknown): Error {
   if (error instanceof Error) {
     if (error.message === 'Failed to fetch') {
       return new Error(
-        'Unable to reach Supabase. Check VITE_SUPABASE_URL, internet access, and that your Supabase project is active.'
+        'Unable to reach Supabase. Check VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY), internet access, and that your Supabase project is active.'
       );
     }
 
