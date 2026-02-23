@@ -1,10 +1,11 @@
+import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { WalletProvider } from "@/contexts/WalletContext";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Header } from "@/components/layout/Header";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
@@ -15,6 +16,15 @@ import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+const RequireAuth = ({ children }: { children: React.ReactElement }) => {
+  const { session, loading } = useAuth();
+
+  if (loading) return null;
+  if (!session) return <Navigate to="/auth" replace />;
+
+  return children;
+};
 
 const App = () => {
   return (
@@ -29,10 +39,38 @@ const App = () => {
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/auth" element={<Auth />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/create" element={<CreateEscrow />} />
-                <Route path="/escrow/:id" element={<EscrowDetail />} />
-                <Route path="/analytics" element={<Analytics />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <RequireAuth>
+                      <Dashboard />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/create"
+                  element={
+                    <RequireAuth>
+                      <CreateEscrow />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/escrow/:id"
+                  element={
+                    <RequireAuth>
+                      <EscrowDetail />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/analytics"
+                  element={
+                    <RequireAuth>
+                      <Analytics />
+                    </RequireAuth>
+                  }
+                />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
