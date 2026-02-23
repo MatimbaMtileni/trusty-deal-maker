@@ -105,6 +105,8 @@ Or use the Supabase Dashboard to upload function code.
 ## Testing & linters ✅
 
 - Run tests: `npm run test` (uses Vitest)
+- Run a specific test by filename/pattern: `npm run test -- plutus-deployment`
+- Note: Vitest does **not** support Jest's `--runInBand` flag. Use Vitest defaults (or Vitest-specific worker options) instead.
 - Run lint: `npm run lint`
 - Build: `npm run build`
 
