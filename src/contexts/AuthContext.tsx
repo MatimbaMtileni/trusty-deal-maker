@@ -18,6 +18,20 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function normalizeAuthError(error: unknown): Error {
+  if (error instanceof Error) {
+    if (error.message === 'Failed to fetch') {
+      return new Error(
+        'Unable to reach Supabase. Check VITE_SUPABASE_URL, internet access, and that your Supabase project is active.'
+      );
+    }
+
+    return error;
+  }
+
+  return new Error('Authentication failed. Please try again.');
+}
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -52,30 +66,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signUp = async (email: string, password: string): Promise<AuthResult> => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: window.location.origin,
-      },
-    });
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin,
+        },
+      });
 
-    return {
-      error,
-      session: data.session,
-    };
+      return {
+        error,
+        session: data.session,
+      };
+    } catch (error) {
+      return {
+        error: normalizeAuthError(error),
+        session: null,
+      };
+    }
   };
 
   const signIn = async (email: string, password: string): Promise<AuthResult> => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    return {
-      error,
-      session: data.session,
-    };
+      return {
+        error,
+        session: data.session,
+      };
+    } catch (error) {
+      return {
+        error: normalizeAuthError(error),
+        session: null,
+      };
+    }
   };
 
   const signOut = async () => {
