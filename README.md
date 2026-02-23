@@ -91,9 +91,14 @@ Deployment (Functions)
 supabase login
 supabase functions deploy send-notification --project-ref <project-ref>
 # same for other functions
+
+# For this repo's escrow functions you can use:
+./scripts/deploy-supabase-functions.sh
 ```
 
 Or use the Supabase Dashboard to upload function code.
+
+- If CLI deploy fails with `unexpected list functions status 403`, your account/token likely lacks project privileges or needs re-authentication. See `DEPLOY_TO_SUPABASE.md` troubleshooting for exact recovery steps.
 
 ---
 

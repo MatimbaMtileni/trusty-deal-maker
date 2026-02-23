@@ -76,11 +76,11 @@ The edge functions will automatically use the new environment variables, but you
 supabase login
 
 # Deploy specific functions
-supabase functions deploy cardano-tx-builder --project-id jqdrthsjqckptwbalpuj
-supabase functions deploy escrow-transactions --project-id jqdrthsjqckptwbalpuj
+supabase functions deploy cardano-tx-builder --project-ref jqdrthsjqckptwbalpuj
+supabase functions deploy escrow-transactions --project-ref jqdrthsjqckptwbalpuj
 
-# Or deploy all functions
-supabase functions deploy
+# Or use the helper script in this repo (recommended)
+./scripts/deploy-supabase-functions.sh
 ```
 
 ## Step 4: Test Local Development
@@ -155,6 +155,34 @@ Check edge function logs in Supabase:
 4. Check for errors related to missing environment variables
 
 ## Troubleshooting
+
+
+### Problem: `unexpected list functions status 403`
+
+**Symptom:**
+```
+Deploying cardano-tx-builder...
+unexpected list functions status 403: {"message":"Your account does not have the necessary privileges to access this endpoint..."}
+```
+
+**Cause:** Your Supabase account/token does not currently have enough privileges for the target project or your CLI session is stale.
+
+**Solution:**
+1. Confirm your user is a project **Admin/Owner** in Supabase dashboard for `jqdrthsjqckptwbalpuj`
+2. Refresh CLI auth:
+   ```bash
+   supabase logout
+   supabase login
+   supabase link --project-ref jqdrthsjqckptwbalpuj
+   ```
+3. Retry deploy with debug:
+   ```bash
+   supabase functions deploy cardano-tx-builder --project-ref jqdrthsjqckptwbalpuj --debug
+   ```
+4. Or run the repo helper script which includes a privilege pre-check:
+   ```bash
+   ./scripts/deploy-supabase-functions.sh
+   ```
 
 ### Problem: "ESCROW_SCRIPT_BASE64 environment variable not set" Error
 
