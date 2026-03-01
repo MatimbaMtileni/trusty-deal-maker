@@ -137,6 +137,7 @@ export const CreateEscrow: React.FC = () => {
         tx_hash: txHash,
         utxo_tx_hash: txHash,
         utxo_output_index: outputIndex,
+        script_address: fundResult.scriptAddress,
       });
       
       // Refresh balance after transaction to reflect locked funds

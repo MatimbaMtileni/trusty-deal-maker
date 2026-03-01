@@ -34,8 +34,9 @@ import { EscrowChat } from '@/components/escrow/EscrowChat';
 import { EscrowAttachments } from '@/components/escrow/EscrowAttachments';
 import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { escrowApi } from '@/services/escrowApi';
-import { lovelaceToAda } from '@/services/lucidService';
-import { executeEscrowRelease, executeEscrowRefund } from '@/services/cardano/txBuilder';
+import { supabase } from '@/integrations/supabase/client';
+import { lovelaceToAda, adaToLovelace } from '@/services/lucidService';
+import { executeEscrowRelease, executeEscrowRefund, executeEscrowFund } from '@/services/cardano/txBuilder';
 import { useToast } from '@/hooks/use-toast';
 import { UserRole, EscrowTransaction } from '@/types/escrow';
 
@@ -155,13 +156,87 @@ export const EscrowDetail: React.FC = () => {
   }, [displayEscrow, wallet]);
 
   const isDeadlinePassed = displayEscrow ? isPast(displayEscrow.deadline) : false;
-  const canRelease = userRole === 'buyer' && displayEscrow?.status === 'active';
-  const canRefund = userRole === 'buyer' && displayEscrow?.status === 'active' && isDeadlinePassed;
+  const isFunded = !!(escrow?.utxo_tx_hash);
+  const canRelease = userRole === 'buyer' && displayEscrow?.status === 'active' && isFunded;
+  const canRefund = userRole === 'buyer' && displayEscrow?.status === 'active' && isDeadlinePassed && isFunded;
 
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
+  };
+
+
+  const handleFund = async () => {
+    if (!displayEscrow || !wallet || !user || !walletApi || !escrow) return;
+
+    setIsProcessing(true);
+    try {
+      toast({
+        title: 'Wallet Authorization Required',
+        description: 'Please approve the funding transaction in your wallet...',
+      });
+
+      const fundResult = await executeEscrowFund(walletApi, {
+        buyerAddress: escrow.buyer_address,
+        sellerAddress: escrow.seller_address,
+        amount: BigInt(escrow.amount),
+        deadline: new Date(escrow.deadline),
+      });
+
+      if (!fundResult.success || !fundResult.txHash) {
+        throw new Error(fundResult.error || 'Transaction failed');
+      }
+
+      // Update DB with UTxO reference and script address
+      const { error: updateError } = await supabase
+        .from('escrows')
+        .update({
+          utxo_tx_hash: fundResult.txHash,
+          utxo_output_index: fundResult.outputIndex ?? 0,
+          script_address: fundResult.scriptAddress || null,
+          on_chain_status: 'active',
+        })
+        .eq('id', escrow.id);
+
+      if (updateError) console.error('Failed to update escrow:', updateError);
+
+      // Record funding transaction
+      await supabase
+        .from('escrow_transactions')
+        .insert({
+          escrow_id: escrow.id,
+          tx_type: 'funded' as const,
+          tx_hash: fundResult.txHash,
+          from_address: escrow.buyer_address,
+          to_address: fundResult.scriptAddress || null,
+          amount: escrow.amount,
+        });
+
+      // Refresh escrow data
+      const [updatedEscrow, txData] = await Promise.all([
+        escrowApi.getEscrowById(escrow.id),
+        escrowApi.getEscrowTransactions(escrow.id),
+      ]);
+      setEscrow(updatedEscrow);
+      setTransactions(txData || []);
+      await refreshBalance();
+
+      toast({
+        title: 'Escrow Funded!',
+        description: `${displayEscrow.amount.toLocaleString()} ADA locked on-chain. Tx: ${fundResult.txHash.slice(0, 12)}…`,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        toast({ variant: 'destructive', title: 'Transaction Cancelled', description: 'You cancelled the wallet authorization' });
+        setIsProcessing(false);
+        return;
+      }
+      toast({ variant: 'destructive', title: 'Funding Failed', description: errorMessage });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleRelease = async () => {
@@ -488,6 +563,39 @@ export const EscrowDetail: React.FC = () => {
             {displayEscrow.status === 'active' && userRole === 'buyer' && (
               <div className="glass-card p-6 space-y-4">
                 <h3 className="font-semibold">Actions</h3>
+
+                {/* Fund Button - shown when escrow is not yet funded on-chain */}
+                {!isFunded && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        className="w-full btn-gradient gap-2"
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Coins className="h-4 w-4" />
+                        )}
+                        Fund Escrow
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="glass-card">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Fund Escrow On-Chain?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will lock {displayEscrow.amount.toLocaleString()} ADA in a native script address. You'll need to approve the transaction in your wallet.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleFund} className="btn-gradient">
+                          Confirm Fund
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
 
                 {/* Release Button */}
                 <AlertDialog>
