@@ -1,5 +1,5 @@
 // ============================================================================
-// Transaction Builder Service – Plutus V2 escrow via edge function
+// Transaction Builder Service – Native Script escrow via edge function
 // ============================================================================
 
 import { supabase } from '@/integrations/supabase/client';
@@ -36,11 +36,8 @@ async function callTxBuilder(params: Record<string, unknown>): Promise<TxBuildRe
 
   if (error) {
     console.error('[TxBuilder] Edge function error:', error);
-    // Try to provide a more helpful message to the UI
     const parts: string[] = [];
     if (error.message) parts.push(error.message);
-    // supabase error may contain details/status
-    // include them when available for easier debugging
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anyErr = error as any;
     if (anyErr.details) parts.push(String(anyErr.details));
@@ -53,15 +50,20 @@ async function callTxBuilder(params: Record<string, unknown>): Promise<TxBuildRe
 }
 
 // ============================================================================
-// Deadline conversion helper
+// Slot conversion – Preprod genesis parameters
 // ============================================================================
 
+// Preprod shelley genesis: slot 0 = 2022-04-01T00:00:00Z, 1 slot = 1 second
+const PREPROD_SHELLEY_START_UNIX_MS = 1654041600000; // 2022-06-01T00:00:00Z (shelley start on preprod)
+const PREPROD_SHELLEY_START_SLOT = 0;
+const SLOT_LENGTH_MS = 1000;
+
 /**
- * Convert a JS Date to milliseconds since epoch (POSIX time).
- * This matches the new Plutus V2 Edge Function format.
+ * Convert a JS Date to a Cardano Preprod slot number.
  */
-function dateToMilliseconds(date: Date): number {
-  return date.getTime();
+function dateToSlot(date: Date): number {
+  const diffMs = date.getTime() - PREPROD_SHELLEY_START_UNIX_MS;
+  return PREPROD_SHELLEY_START_SLOT + Math.floor(diffMs / SLOT_LENGTH_MS);
 }
 
 // ============================================================================
@@ -78,21 +80,20 @@ export async function executeEscrowFund(
   }
 ): Promise<{ success: boolean; txHash?: string; outputIndex?: number; scriptAddress?: string; error?: string }> {
   try {
-    const deadlineMs = dateToMilliseconds(params.deadline);
+    const deadlineSlot = dateToSlot(params.deadline);
 
     const buildResult = await callTxBuilder({
       action: 'buildFundTx',
       buyerAddress: params.buyerAddress,
       sellerAddress: params.sellerAddress,
       amount: params.amount.toString(),
-      deadlineMs,
+      deadlineSlot,
     });
 
     if (!buildResult.success || !buildResult.txCbor) {
       return { success: false, error: buildResult.error || 'Failed to build transaction' };
     }
 
-    // Wallet signs and submits
     const signedTx = await walletApi.signTx(buildResult.txCbor, false);
     const txHash = await walletApi.submitTx(signedTx);
 
@@ -158,7 +159,7 @@ async function executeSpend(
   action: 'buildReleaseTx' | 'buildRefundTx'
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   try {
-    const deadlineMs = dateToMilliseconds(params.deadline);
+    const deadlineSlot = dateToSlot(params.deadline);
 
     const buildResult = await callTxBuilder({
       action,
@@ -166,14 +167,13 @@ async function executeSpend(
       sellerAddress: params.sellerAddress,
       escrowUtxoTxHash: params.escrowUtxoTxHash,
       escrowUtxoIndex: params.escrowUtxoIndex,
-      deadlineMs,
+      deadlineSlot,
     });
 
     if (!buildResult.success || !buildResult.txCbor) {
       return { success: false, error: buildResult.error || 'Failed to build transaction' };
     }
 
-    // Partial sign because release needs both buyer + seller
     const partialSign = action === 'buildReleaseTx';
     const signedTx = await walletApi.signTx(buildResult.txCbor, partialSign);
     const txHash = await walletApi.submitTx(signedTx);
