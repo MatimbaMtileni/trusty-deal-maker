@@ -1,3 +1,4 @@
+// @ts-nocheck — this file targets Deno edge runtime; skip Vite/tsc checks
 // Shared verification helpers for send-wallet-message
 // Works in both Deno (Edge Functions) and Node (tests) via dynamic imports.
 
@@ -41,7 +42,8 @@ async function importBech32(): Promise<{ bech32?: Bech32Like } & Bech32Like> {
   if (typeof Deno !== 'undefined') {
     return await import('https://esm.sh/bech32@1.1.4');
   }
-  return await import('bech32');
+  const mod = await import('bech32');
+  return (mod as any).bech32 ?? mod;
 }
 
 export async function verifySignature(payload: string | Uint8Array, signatureHex: string, pubKeyHex: string): Promise<boolean> {
