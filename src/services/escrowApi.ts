@@ -1,44 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  getScriptBase64, 
-  getScriptAddress, 
-  isScriptDeployed,
-  getExpectedScriptHash,
-  getComputedScriptHash,
-  isScriptHashVerified,
-} from './cardano/scriptRegistry';
-
-const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/escrow-transactions`;
-
-/**
- * Verify that the Plutus script is properly configured
- */
-function verifyScriptConfiguration(): void {
-  if (!isScriptDeployed()) {
-    const scriptBase64 = getScriptBase64();
-    const scriptAddress = getScriptAddress();
-    
-    const missingVars = [];
-    if (!scriptBase64) missingVars.push('VITE_ESCROW_SCRIPT_BASE64');
-    if (!scriptAddress) missingVars.push('VITE_ESCROW_SCRIPT_ADDRESS');
-    
-    throw new Error(
-      `Plutus escrow script not configured. Missing environment variables: ${missingVars.join(', ')}`
-    );
-  }
-
-  const expectedHash = getExpectedScriptHash();
-  if (!expectedHash) {
-    throw new Error('Plutus script hash not configured. Missing environment variable: VITE_ESCROW_SCRIPT_HASH');
-  }
-
-  if (!isScriptHashVerified()) {
-    const computedHash = getComputedScriptHash();
-    throw new Error(
-      `Plutus script hash mismatch. Expected ${expectedHash}, got ${computedHash || 'unknown'}`
-    );
-  }
-}
+import { isScriptDeployed } from './cardano/scriptRegistry';
 
 interface CreateEscrowParams {
   buyer_address: string;
@@ -50,6 +11,7 @@ interface CreateEscrowParams {
   requires_multi_sig?: boolean;
   utxo_tx_hash?: string;
   utxo_output_index?: number;
+  script_address?: string;
 }
 
 interface EscrowActionParams {
@@ -57,164 +19,145 @@ interface EscrowActionParams {
   tx_hash: string;
 }
 
- interface SignEscrowParams {
-   escrow_id: string;
-   signer_address: string;
- }
- 
+interface SignEscrowParams {
+  escrow_id: string;
+  signer_address: string;
+}
+
 export const escrowApi = {
   async createEscrow(params: CreateEscrowParams) {
-    verifyScriptConfiguration();
-    
+    if (!isScriptDeployed()) {
+      throw new Error('Escrow is not enabled on this network');
+    }
+
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
-    const response = await fetch(FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        action: 'create',
-        ...params,
-      }),
-    });
+    // Insert escrow directly via Supabase client (bypasses old edge function)
+    const { data: escrow, error } = await supabase
+      .from('escrows')
+      .insert({
+        buyer_address: params.buyer_address,
+        seller_address: params.seller_address,
+        amount: params.amount,
+        deadline: params.deadline,
+        description: params.description,
+        status: 'active',
+        buyer_user_id: session.user.id,
+        utxo_tx_hash: params.utxo_tx_hash,
+        utxo_output_index: params.utxo_output_index,
+        script_address: params.script_address,
+      })
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create escrow');
-    }
+    if (error) throw new Error(error.message);
 
-    return response.json();
+    // Record the funding transaction
+    const { data: transaction, error: txError } = await supabase
+      .from('escrow_transactions')
+      .insert({
+        escrow_id: escrow.id,
+        tx_type: 'funded' as const,
+        tx_hash: params.tx_hash,
+        from_address: params.buyer_address,
+        to_address: params.script_address || null,
+        amount: params.amount,
+      })
+      .select()
+      .single();
+
+    if (txError) console.error('Failed to record funding tx:', txError);
+
+    return { escrow, transaction };
   },
 
   async releaseEscrow(params: EscrowActionParams) {
-    verifyScriptConfiguration();
-    
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
-    try {
-      const response = await fetch(FUNCTION_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          action: 'release',
-          ...params,
-        }),
-      });
+    const { data: escrow, error } = await supabase
+      .from('escrows')
+      .update({ status: 'completed' as const, on_chain_status: 'spent' })
+      .eq('id', params.escrow_id)
+      .select()
+      .single();
 
-      if (!response.ok) {
-        let errorMsg = 'Failed to release escrow';
-        try {
-          const error = await response.json();
-          errorMsg = error.error || error.message || errorMsg;
-        } catch {
-          errorMsg = `Server error (${response.status}): ${response.statusText}`;
-        }
-        throw new Error(errorMsg);
-      }
+    if (error) throw new Error(error.message);
 
-      return response.json();
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error('Failed to release escrow: Unknown error');
-    }
+    const { data: transaction } = await supabase
+      .from('escrow_transactions')
+      .insert({
+        escrow_id: params.escrow_id,
+        tx_type: 'released' as const,
+        tx_hash: params.tx_hash,
+        from_address: escrow.buyer_address,
+        to_address: escrow.seller_address,
+        amount: escrow.amount,
+      })
+      .select()
+      .single();
+
+    return { escrow, transaction };
   },
 
   async refundEscrow(params: EscrowActionParams) {
-    verifyScriptConfiguration();
-    
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
-    try {
-      const response = await fetch(FUNCTION_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          action: 'refund',
-          ...params,
-        }),
-      });
+    const { data: escrow, error } = await supabase
+      .from('escrows')
+      .update({ status: 'refunded' as const, on_chain_status: 'spent' })
+      .eq('id', params.escrow_id)
+      .select()
+      .single();
 
-      if (!response.ok) {
-        let errorMsg = 'Failed to refund escrow';
-        try {
-          const error = await response.json();
-          errorMsg = error.error || error.message || errorMsg;
-        } catch {
-          errorMsg = `Server error (${response.status}): ${response.statusText}`;
-        }
-        throw new Error(errorMsg);
-      }
+    if (error) throw new Error(error.message);
 
-      return response.json();
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error('Failed to refund escrow: Unknown error');
-    }
+    const { data: transaction } = await supabase
+      .from('escrow_transactions')
+      .insert({
+        escrow_id: params.escrow_id,
+        tx_type: 'refunded' as const,
+        tx_hash: params.tx_hash,
+        from_address: escrow.seller_address,
+        to_address: escrow.buyer_address,
+        amount: escrow.amount,
+      })
+      .select()
+      .single();
+
+    return { escrow, transaction };
   },
 
-   async signEscrow(params: SignEscrowParams) {
-     const { data: { session } } = await supabase.auth.getSession();
-     if (!session) throw new Error('Not authenticated');
- 
-     const response = await fetch(FUNCTION_URL, {
-       method: 'POST',
-       headers: {
-         'Content-Type': 'application/json',
-         'Authorization': `Bearer ${session.access_token}`,
-       },
-       body: JSON.stringify({
-         action: 'sign',
-         ...params,
-       }),
-     });
- 
-     if (!response.ok) {
-       const error = await response.json();
-       throw new Error(error.error || 'Failed to sign escrow');
-     }
- 
-     return response.json();
-   },
- 
-   async getMultiSigStatus(escrowId: string) {
-     const { data: { session } } = await supabase.auth.getSession();
-     if (!session) throw new Error('Not authenticated');
- 
-     const response = await fetch(FUNCTION_URL, {
-       method: 'POST',
-       headers: {
-         'Content-Type': 'application/json',
-         'Authorization': `Bearer ${session.access_token}`,
-       },
-       body: JSON.stringify({
-         action: 'get_multisig_status',
-         escrow_id: escrowId,
-       }),
-     });
- 
-     if (!response.ok) {
-       const error = await response.json();
-       throw new Error(error.error || 'Failed to get multi-sig status');
-     }
- 
-     return response.json();
-   },
- 
+  async signEscrow(params: SignEscrowParams) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+
+    // Determine which field to update based on the signer
+    const { data: escrow } = await supabase
+      .from('escrows')
+      .select('buyer_address, seller_address')
+      .eq('id', params.escrow_id)
+      .single();
+
+    if (!escrow) throw new Error('Escrow not found');
+
+    const updateField = params.signer_address === escrow.buyer_address
+      ? { buyer_signed_at: new Date().toISOString() }
+      : { seller_signed_at: new Date().toISOString() };
+
+    const { data, error } = await supabase
+      .from('escrows')
+      .update(updateField)
+      .eq('id', params.escrow_id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  },
+
   async getEscrows() {
     const { data, error } = await supabase
       .from('escrows')
@@ -259,14 +202,10 @@ export const escrowApi = {
     if (error) throw error;
   },
 
-  /**
-   * Get Plutus script configuration (for verification)
-   */
   getScriptConfig() {
     return {
-      scriptBase64: getScriptBase64(),
-      scriptAddress: getScriptAddress(),
       isDeployed: isScriptDeployed(),
+      type: 'native',
     };
   },
 };
