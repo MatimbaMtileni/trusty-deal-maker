@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Main where
+module EscrowContract where
 
 import Prelude (IO, String, FilePath, putStrLn, (<>))
 import qualified Prelude as P
