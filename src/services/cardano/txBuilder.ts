@@ -5,6 +5,19 @@
 import { supabase } from '@/integrations/supabase/client';
 import { decode, encode } from 'cbor-x';
 
+// Browser-safe hex helpers (no Buffer)
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 /** Result from the edge-function tx builder */
 export interface TxBuildResult {
   success: boolean;
@@ -191,14 +204,14 @@ async function executeSpend(
  * We must splice the witnesses into the original unsigned tx before submitting.
  */
 function assembleTx(unsignedCborHex: string, witnessSetHex: string): string {
-  const txBytes = Uint8Array.from(Buffer.from(unsignedCborHex, 'hex'));
-  const wsBytes = Uint8Array.from(Buffer.from(witnessSetHex, 'hex'));
+  const txBytes = hexToBytes(unsignedCborHex);
+  const wsBytes = hexToBytes(witnessSetHex);
 
   // CBOR structure: [body, witness_set, is_valid, auxiliary_data]
   const tx = decode(txBytes) as unknown[];
   const ws = decode(wsBytes);
   tx[1] = ws;
-  return Buffer.from(encode(tx)).toString('hex');
+  return bytesToHex(encode(tx));
 }
 
 /**
