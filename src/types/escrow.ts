@@ -12,6 +12,9 @@ export interface EscrowDatum {
   description?: string;
   createdAt: Date;
   updatedAt: Date;
+  utxoTxHash?: string | null;
+  scriptAddress?: string | null;
+  onChainStatus?: string | null;
 }
 
 export interface EscrowTransaction {

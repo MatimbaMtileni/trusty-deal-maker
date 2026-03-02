@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Clock, ArrowRight, User, Coins } from 'lucide-react';
+import { Clock, ArrowRight, User, Coins, Link2, Link2Off } from 'lucide-react';
 import { EscrowDatum, UserRole } from '@/types/escrow';
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow, isPast } from 'date-fns';
@@ -28,6 +28,7 @@ export const EscrowCard: React.FC<EscrowCardProps> = ({ escrow, userRole, index 
   const status = statusConfig[escrow.status];
   const isDeadlinePassed = isPast(escrow.deadline);
   const counterparty = userRole === 'buyer' ? escrow.seller : escrow.buyer;
+  const isFundedOnChain = !!escrow.utxoTxHash;
 
   return (
     <motion.div
@@ -40,9 +41,13 @@ export const EscrowCard: React.FC<EscrowCardProps> = ({ escrow, userRole, index 
         className="block glass-card p-5 hover:border-primary/50 transition-all duration-300 group"
       >
         <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className={status.class}>
               {status.label}
+            </Badge>
+            <Badge variant="outline" className={isFundedOnChain ? 'status-completed' : 'status-pending'}>
+              {isFundedOnChain ? <Link2 className="h-3 w-3 mr-1" /> : <Link2Off className="h-3 w-3 mr-1" />}
+              {isFundedOnChain ? 'On-Chain' : 'Unfunded'}
             </Badge>
             <Badge variant="outline" className="text-muted-foreground border-border">
               {userRole === 'buyer' ? '🛒 Buyer' : '💰 Seller'}
