@@ -3,20 +3,6 @@
 // ============================================================================
 
 import { supabase } from '@/integrations/supabase/client';
-import { decode, encode } from 'cbor-x';
-
-// Browser-safe hex helpers (no Buffer)
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-  }
-  return bytes;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
 /** Result from the edge-function tx builder */
 export interface TxBuildResult {
@@ -201,17 +187,18 @@ async function executeSpend(
 
 /**
  * CIP-30 signTx returns only the witness set (not a full tx).
- * We must splice the witnesses into the original unsigned tx before submitting.
+ * Splice it into the original unsigned tx via raw hex manipulation.
+ * Lucid unsigned txs always end with `a0f5f6` (empty witness map + true + null).
  */
 function assembleTx(unsignedCborHex: string, witnessSetHex: string): string {
-  const txBytes = hexToBytes(unsignedCborHex);
-  const wsBytes = hexToBytes(witnessSetHex);
-
-  // CBOR structure: [body, witness_set, is_valid, auxiliary_data]
-  const tx = decode(txBytes) as unknown[];
-  const ws = decode(wsBytes);
-  tx[1] = ws;
-  return bytesToHex(encode(tx));
+  // Unsigned tx CBOR: 84 <body> a0 f5 f6
+  // We replace the empty witness set (a0) with the real one
+  const tail = 'a0f5f6';
+  if (!unsignedCborHex.endsWith(tail)) {
+    throw new Error('Unexpected unsigned tx CBOR format');
+  }
+  const prefix = unsignedCborHex.slice(0, -tail.length);
+  return prefix + witnessSetHex + 'f5f6';
 }
 
 /**
