@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { supabase } from '@/integrations/supabase/client';
+import { decode, encode } from 'cbor-x';
 
 /** Result from the edge-function tx builder */
 export interface TxBuildResult {
@@ -94,9 +95,7 @@ export async function executeEscrowFund(
       return { success: false, error: buildResult.error || 'Failed to build transaction' };
     }
 
-    const signedTx = await walletApi.signTx(buildResult.txCbor, false);
-    const txHash = await walletApi.submitTx(signedTx);
-
+    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, false);
     return {
       success: true,
       txHash,
@@ -175,9 +174,7 @@ async function executeSpend(
     }
 
     const partialSign = action === 'buildReleaseTx';
-    const signedTx = await walletApi.signTx(buildResult.txCbor, partialSign);
-    const txHash = await walletApi.submitTx(signedTx);
-
+    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, partialSign);
     return { success: true, txHash };
   } catch (error) {
     console.error('[TxBuilder] Spend error:', error);
@@ -188,6 +185,34 @@ async function executeSpend(
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * CIP-30 signTx returns only the witness set (not a full tx).
+ * We must splice the witnesses into the original unsigned tx before submitting.
+ */
+function assembleTx(unsignedCborHex: string, witnessSetHex: string): string {
+  const txBytes = Uint8Array.from(Buffer.from(unsignedCborHex, 'hex'));
+  const wsBytes = Uint8Array.from(Buffer.from(witnessSetHex, 'hex'));
+
+  // CBOR structure: [body, witness_set, is_valid, auxiliary_data]
+  const tx = decode(txBytes) as unknown[];
+  const ws = decode(wsBytes);
+  tx[1] = ws;
+  return Buffer.from(encode(tx)).toString('hex');
+}
+
+/**
+ * Sign with wallet, assemble, and submit. Returns the tx hash.
+ */
+async function signAndSubmit(
+  walletApi: WalletApi,
+  unsignedCborHex: string,
+  partialSign: boolean
+): Promise<string> {
+  const witnessSetHex = await walletApi.signTx(unsignedCborHex, partialSign);
+  const signedTxHex = assembleTx(unsignedCborHex, witnessSetHex);
+  return await walletApi.submitTx(signedTxHex);
+}
 
 function errorMsg(e: unknown): string {
   return e instanceof Error ? e.message : 'Transaction failed';
