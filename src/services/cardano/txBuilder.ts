@@ -8,7 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface TxBuildResult {
   success: boolean;
   txCbor?: string;
-  nativeScriptsCbor?: string;
+  originalWitnessCbor?: string;
   error?: string;
   scriptAddress?: string;
   scriptOutputIndex?: number;
@@ -174,7 +174,7 @@ async function executeSpend(
     }
 
     const partialSign = action === 'buildReleaseTx';
-    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, partialSign, buildResult.nativeScriptsCbor);
+    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, partialSign, buildResult.originalWitnessCbor);
     return { success: true, txHash };
   } catch (error) {
     console.error('[TxBuilder] Spend error:', error);
@@ -191,26 +191,27 @@ async function executeSpend(
  * Splice it into the original unsigned tx via raw hex manipulation.
  * Lucid unsigned txs always end with `a0f5f6` (empty witness map + true + null).
  */
-function assembleTx(unsignedCborHex: string, witnessSetHex: string, nativeScriptsCbor?: string): string {
-  // Unsigned tx CBOR: 84 <body> a0 f5 f6
-  // We replace the empty witness set (a0) with the real one
+function assembleTx(unsignedCborHex: string, witnessSetHex: string, originalWitnessCbor?: string): string {
   const tail = 'a0f5f6';
   if (!unsignedCborHex.endsWith(tail)) {
     throw new Error('Unexpected unsigned tx CBOR format');
   }
   const prefix = unsignedCborHex.slice(0, -tail.length);
 
-  if (!nativeScriptsCbor) {
+  if (!originalWitnessCbor) {
     // Simple case (fund tx): just replace empty witness with wallet witnesses
     return prefix + witnessSetHex + 'f5f6';
   }
 
-  // Spend tx: merge wallet vkey witnesses with native scripts.
-  // Wallet returns a CBOR map like a1 00 <vkeys_array> (map with 1 entry, key 0 = vkeywitnesses).
-  // We need to add key 01 = native scripts, so bump the map length by 1.
-  const firstByte = parseInt(witnessSetHex.slice(0, 2), 16);
-  const newFirstByte = (firstByte + 1).toString(16).padStart(2, '0');
-  const mergedWitness = newFirstByte + witnessSetHex.slice(2) + '01' + nativeScriptsCbor;
+  // Spend tx: merge wallet vkey witnesses with the original witness set (native scripts).
+  // Wallet witness: a1 00 <vkeys> (map with key 0)
+  // Original witness: a1 01 <scripts> (map with key 1)
+  // Merged: a2 00 <vkeys> 01 <scripts> (map with keys 0 and 1)
+  const walletMapCount = parseInt(witnessSetHex.slice(0, 2), 16) - 0xa0;
+  const origMapCount = parseInt(originalWitnessCbor.slice(0, 2), 16) - 0xa0;
+  const totalCount = walletMapCount + origMapCount;
+  const mergedHeader = (0xa0 + totalCount).toString(16).padStart(2, '0');
+  const mergedWitness = mergedHeader + witnessSetHex.slice(2) + originalWitnessCbor.slice(2);
 
   return prefix + mergedWitness + 'f5f6';
 }

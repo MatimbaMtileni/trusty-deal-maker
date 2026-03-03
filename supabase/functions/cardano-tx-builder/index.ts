@@ -222,25 +222,25 @@ async function buildSpendTx(lucid: Lucid, params: SpendRequest, kind: "release" 
 
   const tx = await txBuilder.complete({ nativeUplc: false });
 
-  // --- Extract body and native scripts separately ---
-  // The full tx includes the native script in the witness set.
-  // We return a tx with EMPTY witnesses for wallet signing,
-  // plus the native scripts CBOR so the client can merge after signing.
-  const txComplete = tx.txComplete;
+  // --- Extract body and native script witness separately ---
+  // Full tx CBOR = 84 <body> <witness> f5 f6
+  // We derive the witness hex via string math, then return a clean
+  // empty-witness tx for the wallet to sign.
+  const fullTxHex = tx.toString();
   const bodyHex = toHex(txComplete.body().to_bytes());
-  const ws = txComplete.witness_set();
-  const ns = ws.native_scripts();
-  const nativeScriptsCbor = ns ? toHex(ns.to_bytes()) : undefined;
 
-  // Construct tx with empty witness set: 84 <body> a0 f5 f6
+  // witness hex sits between "84"+body and trailing "f5f6"
+  const witnessHex = fullTxHex.slice(2 + bodyHex.length, -4);
+
+  // Construct tx with empty witness set for wallet signing
   const txForSigning = "84" + bodyHex + "a0" + "f5f6";
 
-  console.log(`[buildSpendTx:${kind}] txForSigning length=${txForSigning.length}, hasScripts=${!!nativeScriptsCbor}`);
+  console.log(`[buildSpendTx:${kind}] bodyLen=${bodyHex.length}, witnessHex=${witnessHex.slice(0, 20)}..., txForSigning ends with a0f5f6=${txForSigning.endsWith("a0f5f6")}`);
 
   return {
     success: true,
     txCbor: txForSigning,
-    nativeScriptsCbor,
+    originalWitnessCbor: witnessHex,
     scriptAddress,
     kind,
     requiredSigners: kind === "release" ? ["buyer", "seller"] : ["buyer"],
