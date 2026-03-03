@@ -56,6 +56,12 @@ function json(body: Record<string, unknown>, status = 200) {
   });
 }
 
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 async function initLucid(): Promise<Lucid> {
   return await Lucid.new(
     new Blockfrost(
@@ -80,20 +86,20 @@ function getPkh(lucid: Lucid, address: string): string {
  */
 function buildNativeScriptJson(buyerPkh: string, sellerPkh: string, deadlineSlot: number) {
   return {
-    type: "any",
+    type: "any" as const,
     scripts: [
       {
-        type: "all",
+        type: "all" as const,
         scripts: [
-          { type: "sig", keyHash: buyerPkh },
-          { type: "sig", keyHash: sellerPkh },
+          { type: "sig" as const, keyHash: buyerPkh },
+          { type: "sig" as const, keyHash: sellerPkh },
         ],
       },
       {
-        type: "all",
+        type: "all" as const,
         scripts: [
-          { type: "sig", keyHash: buyerPkh },
-          { type: "after", slot: deadlineSlot },
+          { type: "sig" as const, keyHash: buyerPkh },
+          { type: "after" as const, slot: deadlineSlot },
         ],
       },
     ],
@@ -216,9 +222,25 @@ async function buildSpendTx(lucid: Lucid, params: SpendRequest, kind: "release" 
 
   const tx = await txBuilder.complete({ nativeUplc: false });
 
+  // --- Extract body and native scripts separately ---
+  // The full tx includes the native script in the witness set.
+  // We return a tx with EMPTY witnesses for wallet signing,
+  // plus the native scripts CBOR so the client can merge after signing.
+  const txComplete = tx.txComplete;
+  const bodyHex = toHex(txComplete.body().to_bytes());
+  const ws = txComplete.witness_set();
+  const ns = ws.native_scripts();
+  const nativeScriptsCbor = ns ? toHex(ns.to_bytes()) : undefined;
+
+  // Construct tx with empty witness set: 84 <body> a0 f5 f6
+  const txForSigning = "84" + bodyHex + "a0" + "f5f6";
+
+  console.log(`[buildSpendTx:${kind}] txForSigning length=${txForSigning.length}, hasScripts=${!!nativeScriptsCbor}`);
+
   return {
     success: true,
-    txCbor: tx.toString(),
+    txCbor: txForSigning,
+    nativeScriptsCbor,
     scriptAddress,
     kind,
     requiredSigners: kind === "release" ? ["buyer", "seller"] : ["buyer"],
