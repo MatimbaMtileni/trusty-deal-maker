@@ -227,6 +227,7 @@ async function buildSpendTx(lucid: Lucid, params: SpendRequest, kind: "release" 
   // We derive the witness hex via string math, then return a clean
   // empty-witness tx for the wallet to sign.
   const fullTxHex = tx.toString();
+  const txComplete = tx.txComplete;
   const bodyHex = toHex(txComplete.body().to_bytes());
 
   // witness hex sits between "84"+body and trailing "f5f6"
