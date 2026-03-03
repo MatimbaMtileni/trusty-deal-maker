@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface TxBuildResult {
   success: boolean;
   txCbor?: string;
+  nativeScriptsCbor?: string;
   error?: string;
   scriptAddress?: string;
   scriptOutputIndex?: number;
@@ -94,7 +95,7 @@ export async function executeEscrowFund(
       return { success: false, error: buildResult.error || 'Failed to build transaction' };
     }
 
-    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, false);
+    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, false, undefined);
     return {
       success: true,
       txHash,
@@ -173,7 +174,7 @@ async function executeSpend(
     }
 
     const partialSign = action === 'buildReleaseTx';
-    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, partialSign);
+    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, partialSign, buildResult.nativeScriptsCbor);
     return { success: true, txHash };
   } catch (error) {
     console.error('[TxBuilder] Spend error:', error);
@@ -190,7 +191,7 @@ async function executeSpend(
  * Splice it into the original unsigned tx via raw hex manipulation.
  * Lucid unsigned txs always end with `a0f5f6` (empty witness map + true + null).
  */
-function assembleTx(unsignedCborHex: string, witnessSetHex: string): string {
+function assembleTx(unsignedCborHex: string, witnessSetHex: string, nativeScriptsCbor?: string): string {
   // Unsigned tx CBOR: 84 <body> a0 f5 f6
   // We replace the empty witness set (a0) with the real one
   const tail = 'a0f5f6';
@@ -198,7 +199,20 @@ function assembleTx(unsignedCborHex: string, witnessSetHex: string): string {
     throw new Error('Unexpected unsigned tx CBOR format');
   }
   const prefix = unsignedCborHex.slice(0, -tail.length);
-  return prefix + witnessSetHex + 'f5f6';
+
+  if (!nativeScriptsCbor) {
+    // Simple case (fund tx): just replace empty witness with wallet witnesses
+    return prefix + witnessSetHex + 'f5f6';
+  }
+
+  // Spend tx: merge wallet vkey witnesses with native scripts.
+  // Wallet returns a CBOR map like a1 00 <vkeys_array> (map with 1 entry, key 0 = vkeywitnesses).
+  // We need to add key 01 = native scripts, so bump the map length by 1.
+  const firstByte = parseInt(witnessSetHex.slice(0, 2), 16);
+  const newFirstByte = (firstByte + 1).toString(16).padStart(2, '0');
+  const mergedWitness = newFirstByte + witnessSetHex.slice(2) + '01' + nativeScriptsCbor;
+
+  return prefix + mergedWitness + 'f5f6';
 }
 
 /**
@@ -207,10 +221,11 @@ function assembleTx(unsignedCborHex: string, witnessSetHex: string): string {
 async function signAndSubmit(
   walletApi: WalletApi,
   unsignedCborHex: string,
-  partialSign: boolean
+  partialSign: boolean,
+  nativeScriptsCbor?: string,
 ): Promise<string> {
   const witnessSetHex = await walletApi.signTx(unsignedCborHex, partialSign);
-  const signedTxHex = assembleTx(unsignedCborHex, witnessSetHex);
+  const signedTxHex = assembleTx(unsignedCborHex, witnessSetHex, nativeScriptsCbor);
   return await walletApi.submitTx(signedTxHex);
 }
 
