@@ -36,7 +36,7 @@ import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { escrowApi } from '@/services/escrowApi';
 import { supabase } from '@/integrations/supabase/client';
 import { lovelaceToAda, adaToLovelace } from '@/services/lucidService';
-import { executeEscrowRelease, executeEscrowRefund, executeEscrowFund } from '@/services/cardano/txBuilder';
+import { initiateEscrowRelease, completeEscrowRelease, executeEscrowRefund, executeEscrowFund } from '@/services/cardano/txBuilder';
 import { useToast } from '@/hooks/use-toast';
 import { UserRole, EscrowTransaction } from '@/types/escrow';
 
@@ -68,6 +68,9 @@ interface DbEscrow {
    requires_multi_sig?: boolean;
    buyer_signed_at?: string | null;
    seller_signed_at?: string | null;
+   pending_release_tx_cbor?: string | null;
+   pending_release_script_witness?: string | null;
+   pending_release_buyer_witness?: string | null;
 }
 
 interface DbTransaction {
@@ -157,7 +160,9 @@ export const EscrowDetail: React.FC = () => {
 
   const isDeadlinePassed = displayEscrow ? isPast(displayEscrow.deadline) : false;
   const isFunded = !!(escrow?.utxo_tx_hash);
-  const canRelease = userRole === 'buyer' && displayEscrow?.status === 'active' && isFunded;
+  const hasPendingRelease = !!(escrow?.pending_release_tx_cbor);
+  const canRelease = userRole === 'buyer' && displayEscrow?.status === 'active' && isFunded && !hasPendingRelease;
+  const canCoSign = userRole === 'seller' && displayEscrow?.status === 'active' && isFunded && hasPendingRelease;
   const canRefund = userRole === 'buyer' && displayEscrow?.status === 'active' && isDeadlinePassed && isFunded;
 
   const handleCopy = (text: string, field: string) => {
@@ -246,10 +251,10 @@ export const EscrowDetail: React.FC = () => {
     try {
       toast({
         title: 'Wallet Authorization Required',
-        description: 'Please approve the transaction in your wallet...',
+        description: 'Please approve the release initiation in your wallet (Step 1 of 2)...',
       });
 
-      const result = await executeEscrowRelease(walletApi, {
+      const result = await initiateEscrowRelease(walletApi, {
         buyerAddress: escrow.buyer_address,
         sellerAddress: escrow.seller_address,
         deadline: new Date(escrow.deadline),
@@ -257,42 +262,98 @@ export const EscrowDetail: React.FC = () => {
         escrowUtxoIndex: escrow.utxo_output_index ?? 0,
       });
 
+      if (!result.success || !result.unsignedTxCbor || !result.buyerWitness) {
+        throw new Error(result.error || 'Failed to initiate release');
+      }
+
+      // Store partial tx in DB for seller to co-sign
+      const { error: updateError } = await supabase
+        .from('escrows')
+        .update({
+          pending_release_tx_cbor: result.unsignedTxCbor,
+          pending_release_buyer_witness: result.buyerWitness,
+          pending_release_script_witness: result.scriptWitness || null,
+          buyer_signed_at: new Date().toISOString(),
+        })
+        .eq('id', escrow.id);
+
+      if (updateError) throw new Error('Failed to save pending release');
+
+      // Refresh escrow data
+      const updatedEscrow = await escrowApi.getEscrowById(escrow.id);
+      setEscrow(updatedEscrow);
+
+      toast({
+        title: 'Release Initiated!',
+        description: 'Waiting for the seller to co-sign. They will see a "Co-sign Release" button.',
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        toast({ variant: 'destructive', title: 'Transaction Cancelled', description: 'You cancelled the wallet authorization' });
+        setIsProcessing(false);
+        return;
+      }
+      toast({ variant: 'destructive', title: 'Release Failed', description: errorMessage });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCoSignRelease = async () => {
+    if (!displayEscrow || !wallet || !walletApi || !escrow) return;
+    if (!escrow.pending_release_tx_cbor || !escrow.pending_release_buyer_witness) return;
+
+    setIsProcessing(true);
+    try {
+      toast({
+        title: 'Wallet Authorization Required',
+        description: 'Please approve the release co-signing in your wallet (Step 2 of 2)...',
+      });
+
+      const result = await completeEscrowRelease(walletApi, {
+        unsignedTxCbor: escrow.pending_release_tx_cbor,
+        buyerWitness: escrow.pending_release_buyer_witness,
+        scriptWitness: escrow.pending_release_script_witness || '',
+      });
+
       if (!result.success || !result.txHash) {
         throw new Error(result.error || 'Transaction failed');
       }
 
+      // Record release in backend
       const { escrow: updatedEscrow, transaction } = await escrowApi.releaseEscrow({
         escrow_id: displayEscrow.id,
         tx_hash: result.txHash,
       });
-      
+
+      // Clear pending release fields
+      await supabase
+        .from('escrows')
+        .update({
+          pending_release_tx_cbor: null,
+          pending_release_buyer_witness: null,
+          pending_release_script_witness: null,
+          seller_signed_at: new Date().toISOString(),
+        })
+        .eq('id', escrow.id);
+
       setEscrow(updatedEscrow);
       setTransactions(prev => [...prev, transaction]);
-      
+      await refreshBalance();
+
       toast({
         title: 'Funds Released!',
         description: `${displayEscrow.amount} ADA has been sent to the seller. Tx: ${result.txHash.slice(0, 12)}…`,
       });
-       
-      await refreshBalance();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-       
       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
-        toast({
-          variant: 'destructive',
-          title: 'Transaction Cancelled',
-          description: 'You cancelled the wallet authorization',
-        });
+        toast({ variant: 'destructive', title: 'Transaction Cancelled', description: 'You cancelled the wallet authorization' });
         setIsProcessing(false);
         return;
       }
-       
-      toast({
-        variant: 'destructive',
-        title: 'Release Failed',
-        description: errorMessage,
-      });
+      toast({ variant: 'destructive', title: 'Co-sign Failed', description: errorMessage });
     } finally {
       setIsProcessing(false);
     }
@@ -609,24 +670,30 @@ export const EscrowDetail: React.FC = () => {
                       ) : (
                         <CheckCircle className="h-4 w-4" />
                       )}
-                      Release Funds
+                      {hasPendingRelease ? 'Awaiting Seller Co-sign' : 'Release Funds'}
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent className="glass-card">
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Release Funds to Seller?</AlertDialogTitle>
+                      <AlertDialogTitle>Initiate Release to Seller?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will transfer {displayEscrow.amount} ADA to the seller. This action cannot be undone.
+                        This will sign step 1 of 2. The seller must co-sign before {displayEscrow.amount} ADA is released. This cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction onClick={handleRelease} className="btn-gradient">
-                        Confirm Release
+                        Confirm & Sign
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
+
+                {hasPendingRelease && (
+                  <p className="text-xs text-muted-foreground">
+                    ⏳ Waiting for the seller to co-sign the release transaction
+                  </p>
+                )}
 
                 {/* Refund Button */}
                 <AlertDialog>
@@ -665,16 +732,52 @@ export const EscrowDetail: React.FC = () => {
             )}
 
             {displayEscrow.status === 'active' && userRole === 'seller' && (
-              <div className="glass-card p-6">
+              <div className="glass-card p-6 space-y-4">
                 <div className="flex items-start gap-3">
                   <Clock className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
                   <div>
-                    <h3 className="font-semibold mb-1">Awaiting Release</h3>
+                    <h3 className="font-semibold mb-1">
+                      {canCoSign ? '🔐 Co-sign Required' : 'Awaiting Release'}
+                    </h3>
                     <p className="text-sm text-muted-foreground">
-                      The buyer will release funds once satisfied. You'll receive {displayEscrow.amount} ADA.
+                      {canCoSign
+                        ? 'The buyer has initiated a release. Sign to complete the transfer.'
+                        : `The buyer will release funds once satisfied. You'll receive ${displayEscrow.amount} ADA.`}
                     </p>
                   </div>
                 </div>
+
+                {canCoSign && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        className="w-full btn-gradient gap-2"
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle className="h-4 w-4" />
+                        )}
+                        Co-sign & Release Funds
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="glass-card">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Co-sign Release?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          The buyer has already signed. Your signature will complete the release and send {displayEscrow.amount} ADA to your wallet.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleCoSignRelease} className="btn-gradient">
+                          Confirm & Co-sign
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
               </div>
             )}
 

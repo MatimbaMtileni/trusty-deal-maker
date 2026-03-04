@@ -93,5 +93,7 @@ export {
   executeEscrowFund,
   executeEscrowRelease,
   executeEscrowRefund,
+  initiateEscrowRelease,
+  completeEscrowRelease,
   type TxBuildResult,
 } from './txBuilder';
