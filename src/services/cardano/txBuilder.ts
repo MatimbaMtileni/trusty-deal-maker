@@ -109,9 +109,79 @@ export async function executeEscrowFund(
 }
 
 // ============================================================================
-// RELEASE – buyer + seller authorize release of funds to seller
+// RELEASE – Step 1: Buyer initiates, signs partially, returns witness
 // ============================================================================
 
+export async function initiateEscrowRelease(
+  walletApi: WalletApi,
+  params: {
+    buyerAddress: string;
+    sellerAddress: string;
+    deadline: Date;
+    escrowUtxoTxHash: string;
+    escrowUtxoIndex: number;
+  }
+): Promise<{ success: boolean; unsignedTxCbor?: string; buyerWitness?: string; scriptWitness?: string; error?: string }> {
+  try {
+    const deadlineSlot = dateToSlot(params.deadline);
+
+    const buildResult = await callTxBuilder({
+      action: 'buildReleaseTx',
+      buyerAddress: params.buyerAddress,
+      sellerAddress: params.sellerAddress,
+      escrowUtxoTxHash: params.escrowUtxoTxHash,
+      escrowUtxoIndex: params.escrowUtxoIndex,
+      deadlineSlot,
+    });
+
+    if (!buildResult.success || !buildResult.txCbor) {
+      return { success: false, error: buildResult.error || 'Failed to build transaction' };
+    }
+
+    // Buyer signs partially
+    const buyerWitness = await walletApi.signTx(buildResult.txCbor, true);
+
+    return {
+      success: true,
+      unsignedTxCbor: buildResult.txCbor,
+      buyerWitness,
+      scriptWitness: buildResult.originalWitnessCbor,
+    };
+  } catch (error) {
+    console.error('[TxBuilder] Initiate release error:', error);
+    return { success: false, error: errorMsg(error) };
+  }
+}
+
+// ============================================================================
+// RELEASE – Step 2: Seller co-signs and submits
+// ============================================================================
+
+export async function completeEscrowRelease(
+  walletApi: WalletApi,
+  params: {
+    unsignedTxCbor: string;
+    buyerWitness: string;
+    scriptWitness: string;
+  }
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  try {
+    // Seller signs partially
+    const sellerWitness = await walletApi.signTx(params.unsignedTxCbor, true);
+
+    // Merge all witnesses: buyer vkeys + seller vkeys + script witnesses
+    const mergedWalletWitness = mergeVkeyWitnesses(params.buyerWitness, sellerWitness);
+    const signedTxHex = assembleTx(params.unsignedTxCbor, mergedWalletWitness, params.scriptWitness);
+
+    const txHash = await walletApi.submitTx(signedTxHex);
+    return { success: true, txHash };
+  } catch (error) {
+    console.error('[TxBuilder] Complete release error:', error);
+    return { success: false, error: errorMsg(error) };
+  }
+}
+
+// Legacy single-step release (kept for compatibility)
 export async function executeEscrowRelease(
   walletApi: WalletApi,
   params: {
@@ -187,9 +257,48 @@ async function executeSpend(
 // ============================================================================
 
 /**
+ * Merge two CIP-30 vkey witness sets.
+ * Each witness is: a1 00 <cbor array of vkey witnesses>
+ * Each vkey witness item is: 82 5820 <32B pubkey> 5840 <64B sig> = 198 hex chars
+ */
+function mergeVkeyWitnesses(witness1Hex: string, witness2Hex: string): string {
+  // Extract vkey array hex (skip "a1" map header + "00" key)
+  const arr1Hex = witness1Hex.slice(4);
+  const arr2Hex = witness2Hex.slice(4);
+
+  const vkeys1 = extractCborArrayItems(arr1Hex);
+  const vkeys2 = extractCborArrayItems(arr2Hex);
+  const allVkeys = [...vkeys1, ...vkeys2];
+
+  // Rebuild: a1 00 <definite array>
+  const arrayHeader = (0x80 + allVkeys.length).toString(16).padStart(2, '0');
+  return 'a1' + '00' + arrayHeader + allVkeys.join('');
+}
+
+function extractCborArrayItems(arrayHex: string): string[] {
+  const items: string[] = [];
+  const header = parseInt(arrayHex.slice(0, 2), 16);
+
+  if ((header & 0xf0) === 0x80) {
+    const count = header & 0x0f;
+    let offset = 2;
+    for (let i = 0; i < count; i++) {
+      items.push(arrayHex.slice(offset, offset + 198));
+      offset += 198;
+    }
+  } else if (header === 0x9f) {
+    let offset = 2;
+    while (arrayHex.slice(offset, offset + 2) !== 'ff') {
+      items.push(arrayHex.slice(offset, offset + 198));
+      offset += 198;
+    }
+  }
+  return items;
+}
+
+/**
  * CIP-30 signTx returns only the witness set (not a full tx).
  * Splice it into the original unsigned tx via raw hex manipulation.
- * Lucid unsigned txs always end with `a0f5f6` (empty witness map + true + null).
  */
 function assembleTx(unsignedCborHex: string, witnessSetHex: string, originalWitnessCbor?: string): string {
   const tail = 'a0f5f6';
@@ -199,14 +308,9 @@ function assembleTx(unsignedCborHex: string, witnessSetHex: string, originalWitn
   const prefix = unsignedCborHex.slice(0, -tail.length);
 
   if (!originalWitnessCbor) {
-    // Simple case (fund tx): just replace empty witness with wallet witnesses
     return prefix + witnessSetHex + 'f5f6';
   }
 
-  // Spend tx: merge wallet vkey witnesses with the original witness set (native scripts).
-  // Wallet witness: a1 00 <vkeys> (map with key 0)
-  // Original witness: a1 01 <scripts> (map with key 1)
-  // Merged: a2 00 <vkeys> 01 <scripts> (map with keys 0 and 1)
   const walletMapCount = parseInt(witnessSetHex.slice(0, 2), 16) - 0xa0;
   const origMapCount = parseInt(originalWitnessCbor.slice(0, 2), 16) - 0xa0;
   const totalCount = walletMapCount + origMapCount;
@@ -238,4 +342,6 @@ export const txBuilderService = {
   executeEscrowFund,
   executeEscrowRelease,
   executeEscrowRefund,
+  initiateEscrowRelease,
+  completeEscrowRelease,
 };

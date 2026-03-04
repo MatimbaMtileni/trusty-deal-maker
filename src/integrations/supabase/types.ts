@@ -141,6 +141,9 @@ export type Database = {
           id: string
           last_synced_at: string | null
           on_chain_status: string | null
+          pending_release_buyer_witness: string | null
+          pending_release_script_witness: string | null
+          pending_release_tx_cbor: string | null
           requires_multi_sig: boolean
           script_address: string | null
           seller_address: string
@@ -164,6 +167,9 @@ export type Database = {
           id?: string
           last_synced_at?: string | null
           on_chain_status?: string | null
+          pending_release_buyer_witness?: string | null
+          pending_release_script_witness?: string | null
+          pending_release_tx_cbor?: string | null
           requires_multi_sig?: boolean
           script_address?: string | null
           seller_address: string
@@ -187,6 +193,9 @@ export type Database = {
           id?: string
           last_synced_at?: string | null
           on_chain_status?: string | null
+          pending_release_buyer_witness?: string | null
+          pending_release_script_witness?: string | null
+          pending_release_tx_cbor?: string | null
           requires_multi_sig?: boolean
           script_address?: string | null
           seller_address?: string
