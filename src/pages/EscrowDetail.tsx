@@ -123,6 +123,51 @@ export const EscrowDetail: React.FC = () => {
     fetchData();
   }, [id, toast]);
 
+  // Real-time: listen for escrow updates (e.g. pending release co-sign)
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`escrow-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'escrows',
+          filter: `id=eq.${id}`,
+        },
+        (payload) => {
+          const updated = payload.new as DbEscrow;
+          const old = payload.old as Partial<DbEscrow>;
+
+          setEscrow(updated);
+
+          // Notify seller when a pending release appears
+          if (updated.pending_release_tx_cbor && !old.pending_release_tx_cbor) {
+            toast({
+              title: '🔐 Co-signature Required',
+              description: 'The buyer has initiated a release. Please review and co-sign.',
+            });
+          }
+
+          // Notify both when status changes to completed/refunded
+          if (updated.status !== old.status) {
+            if (updated.status === 'completed') {
+              toast({ title: '✅ Escrow Completed', description: 'Funds have been released.' });
+            } else if (updated.status === 'refunded') {
+              toast({ title: '↩️ Escrow Refunded', description: 'Funds have been returned to the buyer.' });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, toast]);
+
   const displayEscrow = useMemo(() => {
     if (!escrow) return null;
     return {
