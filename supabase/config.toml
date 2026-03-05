@@ -9,3 +9,6 @@ project_id = "mtexwlqkxitcpxnpohjt"
 
 [functions.cardano-tx-builder]
 verify_jwt = false
+
+[functions.send-notification]
+verify_jwt = false
