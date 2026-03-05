@@ -11,7 +11,7 @@ const corsHeaders = {
 };
 
 interface NotificationRequest {
-  type: "escrow_created" | "escrow_funded" | "escrow_released" | "escrow_refunded" | "message_received" | "deadline_approaching";
+  type: "escrow_created" | "escrow_funded" | "escrow_released" | "escrow_refunded" | "message_received" | "deadline_approaching" | "release_pending";
   escrow_id: string;
   recipient_email?: string;
   recipient_address: string;
