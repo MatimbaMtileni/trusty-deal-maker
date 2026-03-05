@@ -328,6 +328,16 @@ export const EscrowDetail: React.FC = () => {
       const updatedEscrow = await escrowApi.getEscrowById(escrow.id);
       setEscrow(updatedEscrow);
 
+      // Send email notification to seller
+      supabase.functions.invoke('send-notification', {
+        body: {
+          type: 'release_pending',
+          escrow_id: escrow.id,
+          recipient_address: escrow.seller_address,
+          data: { base_url: window.location.origin },
+        },
+      }).catch((err) => console.warn('Email notification failed (non-blocking):', err));
+
       toast({
         title: 'Release Initiated!',
         description: 'Waiting for the seller to co-sign. They will see a "Co-sign Release" button.',
