@@ -68,6 +68,16 @@ const EMAIL_TEMPLATES = {
       <p><a href="{{escrow_url}}">Take Action Now</a></p>
     `,
   },
+  release_pending: {
+    subject: "🔐 Co-signature Required - {{amount}} ₳ Escrow Release",
+    html: `
+      <h1>Co-signature Required</h1>
+      <p>The buyer has initiated the release of <strong>{{amount}} ₳</strong> from escrow.</p>
+      <p>Your co-signature is needed to complete the transaction and receive the funds.</p>
+      <p><a href="{{escrow_url}}" style="display:inline-block;padding:12px 24px;background:#10b981;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;">Review & Co-sign</a></p>
+      <p style="margin-top:16px;color:#6b7280;font-size:14px;">If you did not expect this, please contact the buyer.</p>
+    `,
+  },
 };
 
 function renderTemplate(template: string, data: Record<string, unknown>): string {
