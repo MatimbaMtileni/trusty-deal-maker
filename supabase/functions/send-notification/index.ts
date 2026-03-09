@@ -173,7 +173,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Send email using Resend REST API
     const emailPayload = {
-      from: "CardanoEscrow <noreply@cardanoescrow.io>",
+      from: "CardanoEscrow <notifications@noreply.cardanoescrow.com>",
       to: [toEmail],
       subject: renderTemplate(template.subject, templateData),
       html: renderTemplate(template.html, templateData),
