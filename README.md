@@ -129,11 +129,6 @@ Or use the Supabase Dashboard to upload function code.
 
 Contributions welcome. Open issues or PRs and include a short description and steps to reproduce. If you need help setting up Supabase secrets or deploying functions, I can provide step-by-step instructions.
 
----
-
-## License
-
-No license file detected in the repository — add a `LICENSE` if you want to define reuse terms.
 
 ---
 
