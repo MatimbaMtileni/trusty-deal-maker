@@ -132,13 +132,6 @@ Contributions welcome. Open issues or PRs and include a short description and st
 
 ---
 
-If you'd like, I can also:
-- Add a `CONTRIBUTING.md` with developer workflows, or
-- Add a GitHub Action to run `npm test` and `npm run lint` on PRs.
-
-Happy to help with the next step — what would you like me to do next? ✨
----
-
 ## Email notifications (Resend) 🔧
 
 To enable email notifications for the `send-notification` Supabase Function, set your Resend API key in the function's environment as `RESEND_API_KEY`. **Do NOT commit your real key to the repository.**
@@ -150,5 +143,5 @@ To enable email notifications for the `send-notification` Supabase Function, set
 
 For local development, copy `supabase/functions/send-notification/.env.example` to `.env` and update the value. Keep that file out of version control.
 
-If you want, I can show step-by-step how to set the secret in the dashboard.
+
 
