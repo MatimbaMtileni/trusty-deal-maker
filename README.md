@@ -143,5 +143,16 @@ To enable email notifications for the `send-notification` Supabase Function, set
 
 For local development, copy `supabase/functions/send-notification/.env.example` to `.env` and update the value. Keep that file out of version control.
 
+## 🤝 Contribution
+
+Contributions are welcome. Please open issues or PRs.
+
+---
+
+## 📄 License
+
+MIT
+
+
 
 
