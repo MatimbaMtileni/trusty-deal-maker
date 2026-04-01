@@ -63,6 +63,8 @@ interface DbEscrow {
   description: string | null;
   created_at: string;
   updated_at: string;
+  buyer_user_id?: string | null;
+  seller_user_id?: string | null;
    utxo_tx_hash?: string | null;
    utxo_output_index?: number | null;
    requires_multi_sig?: boolean;
