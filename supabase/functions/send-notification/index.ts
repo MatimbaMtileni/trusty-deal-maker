@@ -173,7 +173,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Send email using Resend REST API
     const emailPayload = {
-      from: "CardanoEscrow <notifications@noreply.cardanoescrow.com>",
+      from: Deno.env.get("RESEND_FROM") || "CardanoEscrow <onboarding@resend.dev>",
       to: [toEmail],
       subject: renderTemplate(template.subject, templateData),
       html: renderTemplate(template.html, templateData),
