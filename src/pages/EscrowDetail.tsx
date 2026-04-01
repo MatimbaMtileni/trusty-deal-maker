@@ -63,6 +63,8 @@ interface DbEscrow {
   description: string | null;
   created_at: string;
   updated_at: string;
+  buyer_user_id?: string | null;
+  seller_user_id?: string | null;
    utxo_tx_hash?: string | null;
    utxo_output_index?: number | null;
    requires_multi_sig?: boolean;
@@ -108,6 +110,18 @@ export const EscrowDetail: React.FC = () => {
         ]);
         setEscrow(escrowData);
         setTransactions(txData || []);
+
+        // Auto-populate seller_user_id if current user is the seller and it's not set yet
+        if (escrowData && user && wallet && !escrowData.seller_user_id && escrowData.seller_address === wallet.address) {
+          supabase
+            .from('escrows')
+            .update({ seller_user_id: user.id })
+            .eq('id', escrowData.id)
+            .then(({ error }) => {
+              if (error) console.warn('Failed to set seller_user_id:', error);
+              else setEscrow(prev => prev ? { ...prev, seller_user_id: user.id } : prev);
+            });
+        }
       } catch (error) {
         console.error('Failed to fetch escrow:', error);
         toast({
@@ -121,7 +135,7 @@ export const EscrowDetail: React.FC = () => {
     };
 
     fetchData();
-  }, [id, toast]);
+  }, [id, toast, user, wallet]);
 
   // Real-time: listen for escrow updates (e.g. pending release co-sign)
   useEffect(() => {
