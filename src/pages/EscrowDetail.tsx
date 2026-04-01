@@ -370,11 +370,20 @@ export const EscrowDetail: React.FC = () => {
   };
 
   const handleCoSignRelease = async () => {
-    if (!displayEscrow || !wallet || !walletApi || !escrow) return;
+    if (!displayEscrow || !wallet || !walletApi || !escrow || !user) return;
     if (!escrow.pending_release_tx_cbor || !escrow.pending_release_buyer_witness) return;
 
     setIsProcessing(true);
     try {
+      // Ensure seller_user_id is claimed before co-signing
+      if (!escrow.seller_user_id) {
+        await supabase
+          .from('escrows')
+          .update({ seller_user_id: user.id })
+          .eq('id', escrow.id);
+        setEscrow(prev => prev ? { ...prev, seller_user_id: user.id } : prev);
+      }
+
       toast({
         title: 'Wallet Authorization Required',
         description: 'Please approve the release co-signing in your wallet (Step 2 of 2)...',
