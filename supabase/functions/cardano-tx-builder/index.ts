@@ -205,14 +205,17 @@ async function buildSpendTx(lucid: Lucid, params: SpendRequest, kind: "release" 
 
   const recipient = kind === "release" ? sellerAddress : buyerAddress;
 
-  // Select from buyer for tx building context
-  lucid.selectWalletFrom({ address: buyerAddress });
+  // Use the recipient as the "wallet" so change (escrow value minus fees)
+  // goes directly to them.  Provide an empty UTxO set so Lucid never pulls
+  // additional inputs — the escrow UTxO itself covers fees.
+  lucid.selectWalletFrom({ address: recipient, utxos: [] });
 
   let txBuilder = lucid
     .newTx()
     .collectFrom([escrowUtxo])
-    .attachSpendingValidator(script)
-    .payToAddress(recipient, escrowUtxo.assets);
+    .attachSpendingValidator(script);
+    // No explicit payToAddress — the entire escrow value minus fees
+    // flows as change to the recipient (set above via selectWalletFrom).
 
   if (kind === "release") {
     txBuilder = txBuilder.addSigner(buyerAddress).addSigner(sellerAddress);
@@ -222,21 +225,18 @@ async function buildSpendTx(lucid: Lucid, params: SpendRequest, kind: "release" 
 
   const tx = await txBuilder.complete({ nativeUplc: false });
 
-  // --- Extract body and native script witness separately ---
-  // Full tx CBOR = 84 <body> <witness> f5 f6
-  // We derive the witness hex via string math, then return a clean
-  // empty-witness tx for the wallet to sign.
   const fullTxHex = tx.toString();
   const txComplete = tx.txComplete;
   const bodyHex = toHex(txComplete.body().to_bytes());
 
-  // witness hex sits between "84"+body and trailing "f5f6"
-  const witnessHex = fullTxHex.slice(2 + bodyHex.length, -4);
+  // Extract native-script witness from the full tx.
+  // Full tx CBOR layout: 84 <body> <witness> f5 f6
+  const witnessHex = fullTxHex.slice(2 + bodyHex.length, fullTxHex.length - 4);
 
   // Construct tx with empty witness set for wallet signing
   const txForSigning = "84" + bodyHex + "a0" + "f5f6";
 
-  console.log(`[buildSpendTx:${kind}] bodyLen=${bodyHex.length}, witnessHex=${witnessHex.slice(0, 20)}..., txForSigning ends with a0f5f6=${txForSigning.endsWith("a0f5f6")}`);
+  console.log(`[buildSpendTx:${kind}] inputs=1, bodyLen=${bodyHex.length}, txForSigning ends with a0f5f6=${txForSigning.endsWith("a0f5f6")}`);
 
   return {
     success: true,

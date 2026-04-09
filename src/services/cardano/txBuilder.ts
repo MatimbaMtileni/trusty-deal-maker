@@ -243,8 +243,10 @@ async function executeSpend(
       return { success: false, error: buildResult.error || 'Failed to build transaction' };
     }
 
-    const partialSign = action === 'buildReleaseTx';
-    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, partialSign, buildResult.originalWitnessCbor);
+    // Always partial-sign: the script UTxO input is authorised by the native
+    // script witness, not by the wallet's vkey, so the wallet must not be
+    // asked to cover all inputs.
+    const txHash = await signAndSubmit(walletApi, buildResult.txCbor, true, buildResult.originalWitnessCbor);
     return { success: true, txHash };
   } catch (error) {
     console.error('[TxBuilder] Spend error:', error);
