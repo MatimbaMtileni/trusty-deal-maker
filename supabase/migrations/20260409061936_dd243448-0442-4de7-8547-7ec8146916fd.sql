@@ -1,0 +1,1 @@
+UPDATE public.escrows SET pending_release_tx_cbor = NULL, pending_release_script_witness = NULL, pending_release_buyer_witness = NULL, buyer_signed_at = NULL WHERE id = '311d8dfc-6df3-49bc-b360-0d5c788e098f' AND pending_release_tx_cbor IS NOT NULL;
