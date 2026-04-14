@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { supabase } from '@/integrations/supabase/client';
+import { blockchainService } from '@/services/cardano/blockchainService';
 
 /** Result from the edge-function tx builder */
 export interface TxBuildResult {
@@ -173,7 +174,7 @@ export async function completeEscrowRelease(
     const mergedWalletWitness = mergeVkeyWitnesses(params.buyerWitness, sellerWitness);
     const signedTxHex = assembleTx(params.unsignedTxCbor, mergedWalletWitness, params.scriptWitness);
 
-    const txHash = await walletApi.submitTx(signedTxHex);
+    const txHash = await blockchainService.submitTx(signedTxHex);
     return { success: true, txHash };
   } catch (error) {
     console.error('[TxBuilder] Complete release error:', error);
@@ -333,6 +334,14 @@ async function signAndSubmit(
 ): Promise<string> {
   const witnessSetHex = await walletApi.signTx(unsignedCborHex, partialSign);
   const signedTxHex = assembleTx(unsignedCborHex, witnessSetHex, nativeScriptsCbor);
+
+  // Script spends are manually assembled from wallet witness sets plus native
+  // script witnesses. Submitting via the blockchain backend avoids wallet-side
+  // submit incompatibilities with these fully assembled transactions.
+  if (nativeScriptsCbor) {
+    return await blockchainService.submitTx(signedTxHex);
+  }
+
   return await walletApi.submitTx(signedTxHex);
 }
 
