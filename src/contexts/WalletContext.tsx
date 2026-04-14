@@ -41,7 +41,31 @@ const WalletContext = createContext<WalletContextType | null>(null);
 export const useWallet = () => {
   const context = useContext(WalletContext);
   if (!context) {
-    throw new Error('useWallet must be used within a WalletProvider');
+    // During HMR or cold-start race conditions the provider may not be
+    // mounted yet.  Return a safe no-op stub so the tree can render.
+    return {
+      wallet: null,
+      walletApi: null,
+      walletState: {
+        connected: false,
+        connecting: false,
+        walletName: null,
+        api: null,
+        address: null,
+        stakeAddress: null,
+        balance: 0n,
+        networkId: 0,
+        error: null,
+      } as WalletState,
+      installedWallets: [] as InstalledWallet[],
+      isConnecting: false,
+      connect: async () => { throw new Error('WalletProvider not mounted'); },
+      disconnect: () => {},
+      refreshBalance: async () => {},
+      signTx: async () => { throw new Error('WalletProvider not mounted'); },
+      submitTx: async () => { throw new Error('WalletProvider not mounted'); },
+      signData: async () => { throw new Error('WalletProvider not mounted'); },
+    } as WalletContextType;
   }
   return context;
 };
