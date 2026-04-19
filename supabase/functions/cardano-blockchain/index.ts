@@ -80,6 +80,19 @@ serve(async (req) => {
         
         if (!response.ok) {
           console.error('Blockfrost submit error:', responseText);
+          // Friendlier messages for common on-chain rejections
+          if (responseText.includes('OutsideValidityIntervalUTxO')) {
+            throw new Error(
+              'The escrow deadline has not yet passed on the Cardano network. ' +
+              'Note: the Preprod testnet clock can lag real-world time by several minutes to hours. ' +
+              'Please wait until the on-chain slot reaches the deadline and try again.'
+            );
+          }
+          if (responseText.includes('ScriptWitnessNotValidatingUTXOW')) {
+            throw new Error(
+              'Script validation failed on-chain. This usually means the timelock condition is not yet met (deadline not reached) or required signatures are missing.'
+            );
+          }
           throw new Error(`Transaction submission failed: ${responseText}`);
         }
         
