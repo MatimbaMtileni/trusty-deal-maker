@@ -892,34 +892,6 @@ export const EscrowDetail: React.FC = () => {
                 </div>
               </div>
             )}
-                        disabled={isProcessing}
-                      >
-                        {isProcessing ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <CheckCircle className="h-4 w-4" />
-                        )}
-                        Co-sign & Release Funds
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="glass-card">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Co-sign Release?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          The buyer has already signed. Your signature will complete the release and send {displayEscrow.amount} ADA to your wallet.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleCoSignRelease} className="btn-gradient">
-                          Confirm & Co-sign
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
-              </div>
-            )}
 
             {/* Completed/Refunded Status */}
             {(displayEscrow.status === 'completed' || displayEscrow.status === 'refunded') && (
