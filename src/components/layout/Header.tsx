@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wallet, ChevronDown, LogOut, Copy, Check, User, LogIn, BarChart3 } from 'lucide-react';
+import { Wallet, ChevronDown, LogOut, Copy, Check, User, LogIn, BarChart3, Shield } from 'lucide-react';
+import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -29,6 +30,7 @@ const formatAda = (amount: number) => {
 export const Header: React.FC = () => {
   const { wallet, disconnect: disconnectWallet } = useWallet();
   const { user, signOut, loading: authLoading } = useAuth();
+  const { isAdmin } = useUserRole();
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const location = useLocation();
@@ -62,6 +64,7 @@ export const Header: React.FC = () => {
     { path: '/dashboard', label: 'Dashboard' },
     { path: '/create', label: 'Create Escrow' },
     { path: '/analytics', label: 'Analytics', icon: BarChart3 },
+    ...(isAdmin ? [{ path: '/admin', label: 'Admin', icon: Shield }] : []),
   ];
 
   return (

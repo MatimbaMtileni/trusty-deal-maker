@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import CreateEscrow from "./pages/CreateEscrow";
 import EscrowDetail from "./pages/EscrowDetail";
 import Analytics from "./pages/Analytics";
+import Admin from "./pages/Admin";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -68,6 +69,14 @@ const App = () => {
                   element={
                     <RequireAuth>
                       <Analytics />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/admin"
+                  element={
+                    <RequireAuth>
+                      <Admin />
                     </RequireAuth>
                   }
                 />
