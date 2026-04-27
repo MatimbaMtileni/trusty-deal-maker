@@ -33,6 +33,7 @@ import { TransactionTimeline } from '@/components/escrow/TransactionTimeline';
 import { EscrowChat } from '@/components/escrow/EscrowChat';
 import { EscrowAttachments } from '@/components/escrow/EscrowAttachments';
 import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
+import { FlagDisputeButton } from '@/components/escrow/FlagDisputeButton';
 import { escrowApi } from '@/services/escrowApi';
 import { supabase } from '@/integrations/supabase/client';
 import { lovelaceToAda, adaToLovelace } from '@/services/lucidService';
@@ -806,6 +807,15 @@ export const EscrowDetail: React.FC = () => {
                     💡 Refund available after deadline passes
                   </p>
                 )}
+
+                <FlagDisputeButton
+                  escrowId={displayEscrow.id}
+                  disabled={isProcessing}
+                  onFlagged={async () => {
+                    const updated = await escrowApi.getEscrowById(displayEscrow.id);
+                    setEscrow(updated);
+                  }}
+                />
               </div>
             )}
 
@@ -830,6 +840,58 @@ export const EscrowDetail: React.FC = () => {
                     <AlertDialogTrigger asChild>
                       <Button
                         className="w-full btn-gradient gap-2"
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle className="h-4 w-4" />
+                        )}
+                        Co-sign & Release Funds
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="glass-card">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Co-sign Release?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          The buyer has already signed. Your signature will complete the release and send {displayEscrow.amount} ADA to your wallet.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleCoSignRelease} className="btn-gradient">
+                          Confirm & Co-sign
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+
+                <FlagDisputeButton
+                  escrowId={displayEscrow.id}
+                  disabled={isProcessing}
+                  onFlagged={async () => {
+                    const updated = await escrowApi.getEscrowById(displayEscrow.id);
+                    setEscrow(updated);
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Disputed banner */}
+            {displayEscrow.status === 'disputed' && (
+              <div className="glass-card p-6 border border-destructive/40 bg-destructive/5">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold mb-1">Disputed</h3>
+                    <p className="text-sm text-muted-foreground">
+                      This escrow is under review by an admin. Release and refund are paused until resolution.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
                         disabled={isProcessing}
                       >
                         {isProcessing ? (
