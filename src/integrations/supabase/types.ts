@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit_log: {
+        Row: {
+          action: string
+          actor_user_id: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: []
+      }
       escrow_attachments: {
         Row: {
           created_at: string
@@ -138,6 +168,9 @@ export type Database = {
           datum_hash: string | null
           deadline: string
           description: string | null
+          dispute_reason: string | null
+          disputed_at: string | null
+          disputed_by: string | null
           id: string
           last_synced_at: string | null
           on_chain_status: string | null
@@ -145,6 +178,9 @@ export type Database = {
           pending_release_script_witness: string | null
           pending_release_tx_cbor: string | null
           requires_multi_sig: boolean
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
           script_address: string | null
           seller_address: string
           seller_signed_at: string | null
@@ -164,6 +200,9 @@ export type Database = {
           datum_hash?: string | null
           deadline: string
           description?: string | null
+          dispute_reason?: string | null
+          disputed_at?: string | null
+          disputed_by?: string | null
           id?: string
           last_synced_at?: string | null
           on_chain_status?: string | null
@@ -171,6 +210,9 @@ export type Database = {
           pending_release_script_witness?: string | null
           pending_release_tx_cbor?: string | null
           requires_multi_sig?: boolean
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
           script_address?: string | null
           seller_address: string
           seller_signed_at?: string | null
@@ -190,6 +232,9 @@ export type Database = {
           datum_hash?: string | null
           deadline?: string
           description?: string | null
+          dispute_reason?: string | null
+          disputed_at?: string | null
+          disputed_by?: string | null
           id?: string
           last_synced_at?: string | null
           on_chain_status?: string | null
@@ -197,6 +242,9 @@ export type Database = {
           pending_release_script_witness?: string | null
           pending_release_tx_cbor?: string | null
           requires_multi_sig?: boolean
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
           script_address?: string | null
           seller_address?: string
           seller_signed_at?: string | null
@@ -236,14 +284,55 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          granted_by: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      admin_users_view: {
+        Row: {
+          created_at: string | null
+          display_name: string | null
+          roles: Database["public"]["Enums"]["app_role"][] | null
+          user_id: string | null
+          wallet_address: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin_or_owner: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
+      app_role: "owner" | "admin" | "user"
       escrow_status: "active" | "completed" | "refunded" | "disputed"
       escrow_tx_type: "funded" | "released" | "refunded"
     }
@@ -373,6 +462,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: ["owner", "admin", "user"],
       escrow_status: ["active", "completed", "refunded", "disputed"],
       escrow_tx_type: ["funded", "released", "refunded"],
     },
