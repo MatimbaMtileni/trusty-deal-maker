@@ -113,18 +113,19 @@ export const adminApi = {
 
   async resolveDispute(
     escrowId: string,
-    resolution: 'completed' | 'refunded' | 'active',
+    resolution: 'completed' | 'refunded',
     note: string,
   ) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
+    if (!note.trim()) throw new Error('Resolution note is required for the audit log');
     const { error } = await supabase
       .from('escrows')
       .update({
         status: resolution,
         resolved_by: user.id,
         resolved_at: new Date().toISOString(),
-        resolution_note: note,
+        resolution_note: note.trim(),
       })
       .eq('id', escrowId);
     if (error) throw error;

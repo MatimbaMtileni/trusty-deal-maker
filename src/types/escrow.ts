@@ -1,4 +1,4 @@
-export type EscrowStatus = 'pending' | 'active' | 'completed' | 'refunded' | 'expired';
+export type EscrowStatus = 'pending' | 'active' | 'completed' | 'refunded' | 'expired' | 'disputed';
 
 export type UserRole = 'buyer' | 'seller';
 
