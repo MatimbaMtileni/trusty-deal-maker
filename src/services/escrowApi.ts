@@ -75,6 +75,17 @@ export const escrowApi = {
   async releaseEscrow(params: EscrowActionParams) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
+    if (!/^[a-fA-F0-9]{64}$/.test(params.tx_hash)) {
+      throw new Error('Invalid transaction hash format');
+    }
+
+    // Guard against double-recording the same submitted tx
+    const { data: dup } = await supabase
+      .from('escrow_transactions')
+      .select('id')
+      .eq('tx_hash', params.tx_hash)
+      .maybeSingle();
+    if (dup) throw new Error('This transaction has already been recorded');
 
     const { data: escrow, error } = await supabase
       .from('escrows')
@@ -91,7 +102,7 @@ export const escrowApi = {
         escrow_id: params.escrow_id,
         tx_type: 'released' as const,
         tx_hash: params.tx_hash,
-        from_address: escrow.buyer_address,
+        from_address: escrow.script_address || escrow.buyer_address,
         to_address: escrow.seller_address,
         amount: escrow.amount,
       })
@@ -104,6 +115,16 @@ export const escrowApi = {
   async refundEscrow(params: EscrowActionParams) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
+    if (!/^[a-fA-F0-9]{64}$/.test(params.tx_hash)) {
+      throw new Error('Invalid transaction hash format');
+    }
+
+    const { data: dup } = await supabase
+      .from('escrow_transactions')
+      .select('id')
+      .eq('tx_hash', params.tx_hash)
+      .maybeSingle();
+    if (dup) throw new Error('This transaction has already been recorded');
 
     const { data: escrow, error } = await supabase
       .from('escrows')
@@ -120,7 +141,8 @@ export const escrowApi = {
         escrow_id: params.escrow_id,
         tx_type: 'refunded' as const,
         tx_hash: params.tx_hash,
-        from_address: escrow.seller_address,
+        // Refund flows from the locked script UTxO back to the buyer
+        from_address: escrow.script_address || escrow.buyer_address,
         to_address: escrow.buyer_address,
         amount: escrow.amount,
       })
