@@ -385,11 +385,13 @@ const Admin: React.FC = () => {
                 <Select value={resolveOutcome} onValueChange={(v) => setResolveOutcome(v as any)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="completed">Mark as Completed (favor seller)</SelectItem>
-                    <SelectItem value="refunded">Mark as Refunded (favor buyer)</SelectItem>
-                    <SelectItem value="active">Reopen as Active</SelectItem>
+                    <SelectItem value="completed">Release to Seller (favor seller)</SelectItem>
+                    <SelectItem value="refunded">Refund to Buyer (favor buyer)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Resolutions are final. Once set, the escrow status cannot be changed again.
+                </p>
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">Resolution note</label>
