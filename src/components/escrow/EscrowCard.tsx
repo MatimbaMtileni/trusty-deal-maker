@@ -12,12 +12,13 @@ interface EscrowCardProps {
   index?: number;
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; class: string }> = {
   pending: { label: 'Pending', class: 'status-pending' },
   active: { label: 'Active', class: 'status-active' },
   completed: { label: 'Completed', class: 'status-completed' },
   refunded: { label: 'Refunded', class: 'status-refunded' },
   expired: { label: 'Expired', class: 'status-refunded' },
+  disputed: { label: 'Disputed', class: 'status-pending' },
 };
 
 const formatAddress = (address: string) => {
@@ -25,7 +26,7 @@ const formatAddress = (address: string) => {
 };
 
 export const EscrowCard: React.FC<EscrowCardProps> = ({ escrow, userRole, index = 0 }) => {
-  const status = statusConfig[escrow.status];
+  const status = statusConfig[escrow.status] ?? statusConfig.active;
   const isDeadlinePassed = isPast(escrow.deadline);
   const counterparty = userRole === 'buyer' ? escrow.seller : escrow.buyer;
   const isFundedOnChain = !!escrow.utxoTxHash;
