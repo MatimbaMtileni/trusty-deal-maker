@@ -34,8 +34,9 @@ const Admin: React.FC = () => {
 
   // Resolve dispute dialog state
   const [resolveTarget, setResolveTarget] = useState<any | null>(null);
-  const [resolveOutcome, setResolveOutcome] = useState<'completed' | 'refunded' | 'active'>('completed');
+  const [resolveOutcome, setResolveOutcome] = useState<'completed' | 'refunded'>('completed');
   const [resolveNote, setResolveNote] = useState('');
+  const [evidenceMap, setEvidenceMap] = useState<Record<string, { messages: any[]; attachments: any[] }>>({});
 
   const loadAll = async () => {
     setDataLoading(true);
@@ -60,6 +61,19 @@ const Admin: React.FC = () => {
   useEffect(() => {
     if (isAdmin) loadAll();
   }, [isAdmin]);
+
+  // Lazy-load evidence for disputed escrows when the disputes tab is rendered
+  useEffect(() => {
+    const disputed = escrows.filter((e) => e.status === 'disputed');
+    disputed.forEach((e) => {
+      if (!evidenceMap[e.id]) {
+        adminApi.listDisputeEvidence(e.id).then((ev) => {
+          setEvidenceMap((m) => ({ ...m, [e.id]: ev }));
+        }).catch(() => {});
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escrows]);
 
   if (loading) {
     return (
@@ -205,34 +219,60 @@ const Admin: React.FC = () => {
                     <p className="text-center text-muted-foreground py-8">No active disputes.</p>
                   ) : (
                     <div className="space-y-4">
-                      {escrows.filter((e) => e.status === 'disputed').map((e) => (
-                        <div key={e.id} className="border border-destructive/30 rounded-lg p-4 bg-destructive/5">
-                          <div className="flex justify-between items-start gap-4 flex-wrap">
-                            <div className="flex-1 min-w-[200px]">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Badge variant="destructive">Disputed</Badge>
-                                <span className="font-mono text-sm">{lovelaceToAda(BigInt(e.amount)).toLocaleString()} ₳</span>
+                      {escrows.filter((e) => e.status === 'disputed').map((e) => {
+                        const ev = evidenceMap[e.id];
+                        return (
+                          <div key={e.id} className="border border-destructive/30 rounded-lg p-4 bg-destructive/5">
+                            <div className="flex justify-between items-start gap-4 flex-wrap">
+                              <div className="flex-1 min-w-[200px]">
+                                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                  <Badge variant="destructive">Disputed</Badge>
+                                  {e.dispute_reason_type && (
+                                    <Badge variant="outline" className="capitalize">
+                                      {String(e.dispute_reason_type).replace(/_/g, ' ')}
+                                    </Badge>
+                                  )}
+                                  <span className="font-mono text-sm">{lovelaceToAda(BigInt(e.amount)).toLocaleString()} ₳</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-1">
+                                  Flagged {e.disputed_at ? format(new Date(e.disputed_at), 'PPp') : '—'}
+                                </p>
+                                {e.dispute_reason && (
+                                  <p className="text-sm bg-background/50 p-2 rounded mt-2">{e.dispute_reason}</p>
+                                )}
+                                <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                                  <div>Buyer: <span className="font-mono">{formatAddr(e.buyer_address)}</span></div>
+                                  <div>Seller: <span className="font-mono">{formatAddr(e.seller_address)}</span></div>
+                                </div>
+
+                                {/* Evidence summary */}
+                                <div className="mt-3 text-xs grid grid-cols-2 gap-2">
+                                  <div className="bg-background/40 rounded p-2">
+                                    <div className="font-semibold mb-1">📎 Attachments ({ev?.attachments.length ?? '…'})</div>
+                                    {ev?.attachments.slice(0, 3).map((a: any) => (
+                                      <div key={a.id} className="truncate text-muted-foreground">{a.file_name}</div>
+                                    ))}
+                                    {ev && ev.attachments.length === 0 && <div className="text-muted-foreground">None</div>}
+                                  </div>
+                                  <div className="bg-background/40 rounded p-2">
+                                    <div className="font-semibold mb-1">💬 Messages ({ev?.messages.length ?? '…'})</div>
+                                    {ev?.messages.slice(-2).map((m: any) => (
+                                      <div key={m.id} className="truncate text-muted-foreground">{m.content}</div>
+                                    ))}
+                                    {ev && ev.messages.length === 0 && <div className="text-muted-foreground">None</div>}
+                                  </div>
+                                </div>
                               </div>
-                              <p className="text-xs text-muted-foreground mb-1">
-                                Flagged {e.disputed_at ? format(new Date(e.disputed_at), 'PPp') : '—'}
-                              </p>
-                              {e.dispute_reason && (
-                                <p className="text-sm bg-background/50 p-2 rounded mt-2">{e.dispute_reason}</p>
-                              )}
-                              <div className="text-xs text-muted-foreground mt-2 space-y-1">
-                                <div>Buyer: <span className="font-mono">{formatAddr(e.buyer_address)}</span></div>
-                                <div>Seller: <span className="font-mono">{formatAddr(e.seller_address)}</span></div>
+                              <div className="flex gap-2">
+                                <Link to={`/escrow/${e.id}`}>
+                                  <Button size="sm" variant="outline">View Full</Button>
+                                </Link>
+                                <Button size="sm" onClick={() => { setResolveTarget(e); setResolveOutcome('completed'); }}>Resolve</Button>
                               </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <Link to={`/escrow/${e.id}`}>
-                                <Button size="sm" variant="outline">View</Button>
-                              </Link>
-                              <Button size="sm" onClick={() => { setResolveTarget(e); setResolveOutcome('completed'); }}>Resolve</Button>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </Card>
@@ -345,11 +385,13 @@ const Admin: React.FC = () => {
                 <Select value={resolveOutcome} onValueChange={(v) => setResolveOutcome(v as any)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="completed">Mark as Completed (favor seller)</SelectItem>
-                    <SelectItem value="refunded">Mark as Refunded (favor buyer)</SelectItem>
-                    <SelectItem value="active">Reopen as Active</SelectItem>
+                    <SelectItem value="completed">Release to Seller (favor seller)</SelectItem>
+                    <SelectItem value="refunded">Refund to Buyer (favor buyer)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Resolutions are final. Once set, the escrow status cannot be changed again.
+                </p>
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">Resolution note</label>

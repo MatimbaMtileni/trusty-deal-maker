@@ -169,6 +169,9 @@ export type Database = {
           deadline: string
           description: string | null
           dispute_reason: string | null
+          dispute_reason_type:
+            | Database["public"]["Enums"]["dispute_reason_type"]
+            | null
           disputed_at: string | null
           disputed_by: string | null
           id: string
@@ -201,6 +204,9 @@ export type Database = {
           deadline: string
           description?: string | null
           dispute_reason?: string | null
+          dispute_reason_type?:
+            | Database["public"]["Enums"]["dispute_reason_type"]
+            | null
           disputed_at?: string | null
           disputed_by?: string | null
           id?: string
@@ -233,6 +239,9 @@ export type Database = {
           deadline?: string
           description?: string | null
           dispute_reason?: string | null
+          dispute_reason_type?:
+            | Database["public"]["Enums"]["dispute_reason_type"]
+            | null
           disputed_at?: string | null
           disputed_by?: string | null
           id?: string
@@ -333,6 +342,12 @@ export type Database = {
     }
     Enums: {
       app_role: "owner" | "admin" | "user"
+      dispute_reason_type:
+        | "item_not_received"
+        | "not_as_described"
+        | "payment_issue"
+        | "communication_breakdown"
+        | "other"
       escrow_status: "active" | "completed" | "refunded" | "disputed"
       escrow_tx_type: "funded" | "released" | "refunded"
     }
@@ -463,6 +478,13 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["owner", "admin", "user"],
+      dispute_reason_type: [
+        "item_not_received",
+        "not_as_described",
+        "payment_issue",
+        "communication_breakdown",
+        "other",
+      ],
       escrow_status: ["active", "completed", "refunded", "disputed"],
       escrow_tx_type: ["funded", "released", "refunded"],
     },
