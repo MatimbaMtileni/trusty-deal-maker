@@ -34,11 +34,14 @@ import { EscrowChat } from '@/components/escrow/EscrowChat';
 import { EscrowAttachments } from '@/components/escrow/EscrowAttachments';
 import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { FlagDisputeButton } from '@/components/escrow/FlagDisputeButton';
+import { TxConfirmationCard } from '@/components/escrow/TxConfirmationCard';
 import { escrowApi } from '@/services/escrowApi';
 import { supabase } from '@/integrations/supabase/client';
 import { lovelaceToAda, adaToLovelace } from '@/services/lucidService';
 import { initiateEscrowRelease, completeEscrowRelease, executeEscrowRefund, executeEscrowFund } from '@/services/cardano/txBuilder';
 import { useToast } from '@/hooks/use-toast';
+import { useTxConfirmation } from '@/hooks/useTxConfirmation';
+import { CONFIRMATION_THRESHOLDS } from '@/services/cardano';
 import { UserRole, EscrowTransaction } from '@/types/escrow';
 
 const statusConfig = {
