@@ -516,18 +516,23 @@ export const EscrowDetail: React.FC = () => {
         throw new Error(result.error || 'Transaction failed');
       }
 
-      const { escrow: updatedEscrow, transaction } = await escrowApi.refundEscrow({
+      const { transaction } = await escrowApi.recordRefundSubmission({
         escrow_id: displayEscrow.id,
         tx_hash: result.txHash,
       });
-      
-      setEscrow(updatedEscrow);
+
       setTransactions(prev => [...prev, transaction]);
       await refreshBalance();
-      
+
+      // Wait for N confirmations before flipping status to `refunded`.
+      setPendingFinalize('refund');
+      txConfirmation.track(result.txHash).catch((err) => {
+        console.error('[refund] confirmation tracking failed:', err);
+      });
+
       toast({
-        title: 'Refund Successful!',
-        description: `${displayEscrow.amount} ADA has been returned to your wallet. Tx: ${result.txHash.slice(0, 12)}…`,
+        title: 'Refund Submitted',
+        description: `Tx ${result.txHash.slice(0, 12)}… is on-chain. Waiting for ${requiredConfirmations} confirmations before finalizing.`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
