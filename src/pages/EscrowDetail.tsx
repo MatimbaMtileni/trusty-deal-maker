@@ -760,6 +760,17 @@ export const EscrowDetail: React.FC = () => {
               </p>
             </div>
 
+            {/* Confirmation tracker — shown while a release/refund tx is awaiting N confirmations */}
+            {txConfirmation.state && (txConfirmation.isTracking || pendingFinalize) && (
+              <TxConfirmationCard
+                state={txConfirmation.state}
+                onClose={() => {
+                  txConfirmation.reset();
+                  setPendingFinalize(null);
+                }}
+              />
+            )}
+
             {/* Actions */}
             {displayEscrow.status === 'active' && userRole === 'buyer' && (
               <div className="glass-card p-6 space-y-4">
