@@ -103,6 +103,53 @@ export const EscrowDetail: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
+  // Pick required confirmations based on transfer size.
+  // Larger transfers wait for more block confirmations before flipping to a terminal state.
+  const requiredConfirmations = useMemo(() => {
+    const ada = escrow ? lovelaceToAda(BigInt(escrow.amount)) : 0;
+    if (ada >= 1000) return CONFIRMATION_THRESHOLDS.HIGH_VALUE;
+    if (ada >= 100) return CONFIRMATION_THRESHOLDS.MEDIUM_VALUE;
+    return CONFIRMATION_THRESHOLDS.LOW_VALUE;
+  }, [escrow]);
+
+  const [pendingFinalize, setPendingFinalize] = useState<null | 'release' | 'refund'>(null);
+
+  const txConfirmation = useTxConfirmation({
+    requiredConfirmations,
+    pollIntervalMs: 5000,
+    maxPollTimeMs: 600_000,
+    onConfirmed: async (state) => {
+      try {
+        if (!escrow) return;
+        if (pendingFinalize === 'release') {
+          const updated = await escrowApi.confirmRelease(escrow.id);
+          setEscrow(updated as DbEscrow);
+          toast({
+            title: 'Release Finalized',
+            description: `Confirmed in ${state.status.confirmations} blocks. Escrow marked as completed.`,
+          });
+        } else if (pendingFinalize === 'refund') {
+          const updated = await escrowApi.confirmRefund(escrow.id);
+          setEscrow(updated as DbEscrow);
+          toast({
+            title: 'Refund Finalized',
+            description: `Confirmed in ${state.status.confirmations} blocks. Escrow marked as refunded.`,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to finalize escrow status:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Finalization Failed',
+          description: err instanceof Error ? err.message : 'Could not update escrow status',
+        });
+      } finally {
+        setPendingFinalize(null);
+      }
+    },
+    onError: (msg) => console.warn('[txConfirmation]', msg),
+  });
+
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
