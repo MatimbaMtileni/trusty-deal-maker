@@ -34,11 +34,14 @@ import { EscrowChat } from '@/components/escrow/EscrowChat';
 import { EscrowAttachments } from '@/components/escrow/EscrowAttachments';
 import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { FlagDisputeButton } from '@/components/escrow/FlagDisputeButton';
+import { TxConfirmationCard } from '@/components/escrow/TxConfirmationCard';
 import { escrowApi } from '@/services/escrowApi';
 import { supabase } from '@/integrations/supabase/client';
 import { lovelaceToAda, adaToLovelace } from '@/services/lucidService';
 import { initiateEscrowRelease, completeEscrowRelease, executeEscrowRefund, executeEscrowFund } from '@/services/cardano/txBuilder';
 import { useToast } from '@/hooks/use-toast';
+import { useTxConfirmation } from '@/hooks/useTxConfirmation';
+import { CONFIRMATION_THRESHOLDS } from '@/services/cardano';
 import { UserRole, EscrowTransaction } from '@/types/escrow';
 
 const statusConfig = {
@@ -99,6 +102,53 @@ export const EscrowDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Pick required confirmations based on transfer size.
+  // Larger transfers wait for more block confirmations before flipping to a terminal state.
+  const requiredConfirmations = useMemo(() => {
+    const ada = escrow ? lovelaceToAda(BigInt(escrow.amount)) : 0;
+    if (ada >= 1000) return CONFIRMATION_THRESHOLDS.HIGH_VALUE;
+    if (ada >= 100) return CONFIRMATION_THRESHOLDS.MEDIUM_VALUE;
+    return CONFIRMATION_THRESHOLDS.LOW_VALUE;
+  }, [escrow]);
+
+  const [pendingFinalize, setPendingFinalize] = useState<null | 'release' | 'refund'>(null);
+
+  const txConfirmation = useTxConfirmation({
+    requiredConfirmations,
+    pollIntervalMs: 5000,
+    maxPollTimeMs: 600_000,
+    onConfirmed: async (state) => {
+      try {
+        if (!escrow) return;
+        if (pendingFinalize === 'release') {
+          const updated = await escrowApi.confirmRelease(escrow.id);
+          setEscrow(updated as DbEscrow);
+          toast({
+            title: 'Release Finalized',
+            description: `Confirmed in ${state.status.confirmations} blocks. Escrow marked as completed.`,
+          });
+        } else if (pendingFinalize === 'refund') {
+          const updated = await escrowApi.confirmRefund(escrow.id);
+          setEscrow(updated as DbEscrow);
+          toast({
+            title: 'Refund Finalized',
+            description: `Confirmed in ${state.status.confirmations} blocks. Escrow marked as refunded.`,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to finalize escrow status:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Finalization Failed',
+          description: err instanceof Error ? err.message : 'Could not update escrow status',
+        });
+      } finally {
+        setPendingFinalize(null);
+      }
+    },
+    onError: (msg) => console.warn('[txConfirmation]', msg),
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -400,13 +450,14 @@ export const EscrowDetail: React.FC = () => {
         throw new Error(result.error || 'Transaction failed');
       }
 
-      // Record release in backend
-      const { escrow: updatedEscrow, transaction } = await escrowApi.releaseEscrow({
+      // Record submission only — DO NOT mark as completed yet.
+      // Status flips to `completed` after N confirmations (see useTxConfirmation).
+      const { transaction } = await escrowApi.recordReleaseSubmission({
         escrow_id: displayEscrow.id,
         tx_hash: result.txHash,
       });
 
-      // Clear pending release fields
+      // Clear pending release fields and record seller signature
       await supabase
         .from('escrows')
         .update({
@@ -417,13 +468,18 @@ export const EscrowDetail: React.FC = () => {
         })
         .eq('id', escrow.id);
 
-      setEscrow(updatedEscrow);
       setTransactions(prev => [...prev, transaction]);
       await refreshBalance();
 
+      // Start polling Blockfrost. Status flip happens in onConfirmed.
+      setPendingFinalize('release');
+      txConfirmation.track(result.txHash).catch((err) => {
+        console.error('[release] confirmation tracking failed:', err);
+      });
+
       toast({
-        title: 'Funds Released!',
-        description: `${displayEscrow.amount} ADA has been sent to the seller. Tx: ${result.txHash.slice(0, 12)}…`,
+        title: 'Release Submitted',
+        description: `Tx ${result.txHash.slice(0, 12)}… is on-chain. Waiting for ${requiredConfirmations} confirmations before finalizing.`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -460,18 +516,23 @@ export const EscrowDetail: React.FC = () => {
         throw new Error(result.error || 'Transaction failed');
       }
 
-      const { escrow: updatedEscrow, transaction } = await escrowApi.refundEscrow({
+      const { transaction } = await escrowApi.recordRefundSubmission({
         escrow_id: displayEscrow.id,
         tx_hash: result.txHash,
       });
-      
-      setEscrow(updatedEscrow);
+
       setTransactions(prev => [...prev, transaction]);
       await refreshBalance();
-      
+
+      // Wait for N confirmations before flipping status to `refunded`.
+      setPendingFinalize('refund');
+      txConfirmation.track(result.txHash).catch((err) => {
+        console.error('[refund] confirmation tracking failed:', err);
+      });
+
       toast({
-        title: 'Refund Successful!',
-        description: `${displayEscrow.amount} ADA has been returned to your wallet. Tx: ${result.txHash.slice(0, 12)}…`,
+        title: 'Refund Submitted',
+        description: `Tx ${result.txHash.slice(0, 12)}… is on-chain. Waiting for ${requiredConfirmations} confirmations before finalizing.`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -698,6 +759,17 @@ export const EscrowDetail: React.FC = () => {
                   : `${formatDistanceToNow(displayEscrow.deadline)} remaining`}
               </p>
             </div>
+
+            {/* Confirmation tracker — shown while a release/refund tx is awaiting N confirmations */}
+            {txConfirmation.state && (txConfirmation.isTracking || pendingFinalize) && (
+              <TxConfirmationCard
+                state={txConfirmation.state}
+                onClose={() => {
+                  txConfirmation.reset();
+                  setPendingFinalize(null);
+                }}
+              />
+            )}
 
             {/* Actions */}
             {displayEscrow.status === 'active' && userRole === 'buyer' && (
