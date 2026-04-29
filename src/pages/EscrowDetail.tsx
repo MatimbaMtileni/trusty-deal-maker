@@ -450,13 +450,14 @@ export const EscrowDetail: React.FC = () => {
         throw new Error(result.error || 'Transaction failed');
       }
 
-      // Record release in backend
-      const { escrow: updatedEscrow, transaction } = await escrowApi.releaseEscrow({
+      // Record submission only — DO NOT mark as completed yet.
+      // Status flips to `completed` after N confirmations (see useTxConfirmation).
+      const { transaction } = await escrowApi.recordReleaseSubmission({
         escrow_id: displayEscrow.id,
         tx_hash: result.txHash,
       });
 
-      // Clear pending release fields
+      // Clear pending release fields and record seller signature
       await supabase
         .from('escrows')
         .update({
@@ -467,13 +468,18 @@ export const EscrowDetail: React.FC = () => {
         })
         .eq('id', escrow.id);
 
-      setEscrow(updatedEscrow);
       setTransactions(prev => [...prev, transaction]);
       await refreshBalance();
 
+      // Start polling Blockfrost. Status flip happens in onConfirmed.
+      setPendingFinalize('release');
+      txConfirmation.track(result.txHash).catch((err) => {
+        console.error('[release] confirmation tracking failed:', err);
+      });
+
       toast({
-        title: 'Funds Released!',
-        description: `${displayEscrow.amount} ADA has been sent to the seller. Tx: ${result.txHash.slice(0, 12)}…`,
+        title: 'Release Submitted',
+        description: `Tx ${result.txHash.slice(0, 12)}… is on-chain. Waiting for ${requiredConfirmations} confirmations before finalizing.`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
