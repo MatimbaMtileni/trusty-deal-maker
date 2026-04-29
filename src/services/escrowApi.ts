@@ -72,14 +72,19 @@ export const escrowApi = {
     return { escrow, transaction };
   },
 
-  async releaseEscrow(params: EscrowActionParams) {
+  /**
+   * Record a submitted release tx WITHOUT flipping escrow status.
+   * Status remains `active` until tx reaches N confirmations on-chain
+   * (see `confirmRelease`). This prevents marking funds as released for
+   * a transaction that could still be rolled back.
+   */
+  async recordReleaseSubmission(params: EscrowActionParams) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
     if (!/^[a-fA-F0-9]{64}$/.test(params.tx_hash)) {
       throw new Error('Invalid transaction hash format');
     }
 
-    // Guard against double-recording the same submitted tx
     const { data: dup } = await supabase
       .from('escrow_transactions')
       .select('id')
@@ -87,16 +92,14 @@ export const escrowApi = {
       .maybeSingle();
     if (dup) throw new Error('This transaction has already been recorded');
 
-    const { data: escrow, error } = await supabase
+    const { data: escrow, error: eErr } = await supabase
       .from('escrows')
-      .update({ status: 'completed' as const, on_chain_status: 'spent' })
+      .select('*')
       .eq('id', params.escrow_id)
-      .select()
       .single();
+    if (eErr || !escrow) throw new Error(eErr?.message || 'Escrow not found');
 
-    if (error) throw new Error(error.message);
-
-    const { data: transaction } = await supabase
+    const { data: transaction, error: txError } = await supabase
       .from('escrow_transactions')
       .insert({
         escrow_id: params.escrow_id,
@@ -108,11 +111,46 @@ export const escrowApi = {
       })
       .select()
       .single();
+    if (txError) throw new Error(txError.message);
 
     return { escrow, transaction };
   },
 
-  async refundEscrow(params: EscrowActionParams) {
+  /**
+   * Finalize a release after the on-chain tx reaches N confirmations.
+   * Flips escrow.status to `completed`. Idempotent — safe to call repeatedly.
+   */
+  async confirmRelease(escrow_id: string) {
+    const { data: current } = await supabase
+      .from('escrows')
+      .select('status')
+      .eq('id', escrow_id)
+      .single();
+    if (current?.status === 'completed') {
+      const { data } = await supabase.from('escrows').select('*').eq('id', escrow_id).single();
+      return data;
+    }
+    const { data: escrow, error } = await supabase
+      .from('escrows')
+      .update({ status: 'completed' as const, on_chain_status: 'spent' })
+      .eq('id', escrow_id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return escrow;
+  },
+
+  /**
+   * @deprecated Use recordReleaseSubmission + confirmRelease (after N confirmations).
+   * Kept for backwards-compatibility with any callers that submit + finalize atomically.
+   */
+  async releaseEscrow(params: EscrowActionParams) {
+    const { escrow: _e, transaction } = await this.recordReleaseSubmission(params);
+    const escrow = await this.confirmRelease(params.escrow_id);
+    return { escrow, transaction };
+  },
+
+  async recordRefundSubmission(params: EscrowActionParams) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
     if (!/^[a-fA-F0-9]{64}$/.test(params.tx_hash)) {
@@ -126,29 +164,54 @@ export const escrowApi = {
       .maybeSingle();
     if (dup) throw new Error('This transaction has already been recorded');
 
-    const { data: escrow, error } = await supabase
+    const { data: escrow, error: eErr } = await supabase
       .from('escrows')
-      .update({ status: 'refunded' as const, on_chain_status: 'spent' })
+      .select('*')
       .eq('id', params.escrow_id)
-      .select()
       .single();
+    if (eErr || !escrow) throw new Error(eErr?.message || 'Escrow not found');
 
-    if (error) throw new Error(error.message);
-
-    const { data: transaction } = await supabase
+    const { data: transaction, error: txError } = await supabase
       .from('escrow_transactions')
       .insert({
         escrow_id: params.escrow_id,
         tx_type: 'refunded' as const,
         tx_hash: params.tx_hash,
-        // Refund flows from the locked script UTxO back to the buyer
         from_address: escrow.script_address || escrow.buyer_address,
         to_address: escrow.buyer_address,
         amount: escrow.amount,
       })
       .select()
       .single();
+    if (txError) throw new Error(txError.message);
 
+    return { escrow, transaction };
+  },
+
+  async confirmRefund(escrow_id: string) {
+    const { data: current } = await supabase
+      .from('escrows')
+      .select('status')
+      .eq('id', escrow_id)
+      .single();
+    if (current?.status === 'refunded') {
+      const { data } = await supabase.from('escrows').select('*').eq('id', escrow_id).single();
+      return data;
+    }
+    const { data: escrow, error } = await supabase
+      .from('escrows')
+      .update({ status: 'refunded' as const, on_chain_status: 'spent' })
+      .eq('id', escrow_id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return escrow;
+  },
+
+  /** @deprecated Use recordRefundSubmission + confirmRefund. */
+  async refundEscrow(params: EscrowActionParams) {
+    const { escrow: _e, transaction } = await this.recordRefundSubmission(params);
+    const escrow = await this.confirmRefund(params.escrow_id);
     return { escrow, transaction };
   },
 
