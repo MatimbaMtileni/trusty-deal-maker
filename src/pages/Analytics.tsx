@@ -32,7 +32,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { WalletConnectModal } from '@/components/wallet/WalletConnectModal';
 import { escrowApi } from '@/services/escrowApi';
-import { lovelaceToAda } from '@/services/lucidService';
+import { lovelaceToAda } from '@/services/cardano/networkGuard';
 import { format, subDays, startOfDay, isWithinInterval } from 'date-fns';
 
 interface DbEscrow {
