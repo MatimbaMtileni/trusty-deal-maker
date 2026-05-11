@@ -204,7 +204,13 @@ export const escrowApi = {
     // Server-side idempotency: only flip if currently 'active' or 'disputed'.
     const { data: updated, error } = await supabase
       .from('escrows')
-      .update({ status: 'refunded' as const, on_chain_status: 'spent' })
+      .update({
+        status: 'refunded' as const,
+        on_chain_status: 'spent',
+        pending_release_tx_cbor: null,
+        pending_release_buyer_witness: null,
+        pending_release_script_witness: null,
+      })
       .eq('id', escrow_id)
       .in('status', ['active', 'disputed'])
       .select()
