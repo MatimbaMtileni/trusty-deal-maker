@@ -126,7 +126,13 @@ export const escrowApi = {
     // that lose the race get 0 rows back and we return the existing record.
     const { data: updated, error } = await supabase
       .from('escrows')
-      .update({ status: 'completed' as const, on_chain_status: 'spent' })
+      .update({
+        status: 'completed' as const,
+        on_chain_status: 'spent',
+        pending_release_tx_cbor: null,
+        pending_release_buyer_witness: null,
+        pending_release_script_witness: null,
+      })
       .eq('id', escrow_id)
       .eq('status', 'active')
       .select()
