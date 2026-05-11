@@ -121,23 +121,29 @@ export const escrowApi = {
    * Flips escrow.status to `completed`. Idempotent — safe to call repeatedly.
    */
   async confirmRelease(escrow_id: string) {
-    const { data: current } = await supabase
-      .from('escrows')
-      .select('status')
-      .eq('id', escrow_id)
-      .single();
-    if (current?.status === 'completed') {
-      const { data } = await supabase.from('escrows').select('*').eq('id', escrow_id).single();
-      return data;
-    }
-    const { data: escrow, error } = await supabase
+    // Server-side idempotency: only flip if currently 'active'.
+    // The conditional WHERE acts as an atomic guard — concurrent callers
+    // that lose the race get 0 rows back and we return the existing record.
+    const { data: updated, error } = await supabase
       .from('escrows')
       .update({ status: 'completed' as const, on_chain_status: 'spent' })
       .eq('id', escrow_id)
+      .eq('status', 'active')
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    return escrow;
+    if (updated) return updated;
+
+    // No row updated — either already completed (idempotent success) or in
+    // an unexpected state (e.g. refunded/disputed). Fetch and validate.
+    const { data: existing, error: fErr } = await supabase
+      .from('escrows')
+      .select('*')
+      .eq('id', escrow_id)
+      .single();
+    if (fErr) throw new Error(fErr.message);
+    if (existing.status === 'completed') return existing;
+    throw new Error(`Cannot confirm release: escrow is in '${existing.status}' state`);
   },
 
   /**
@@ -189,23 +195,25 @@ export const escrowApi = {
   },
 
   async confirmRefund(escrow_id: string) {
-    const { data: current } = await supabase
-      .from('escrows')
-      .select('status')
-      .eq('id', escrow_id)
-      .single();
-    if (current?.status === 'refunded') {
-      const { data } = await supabase.from('escrows').select('*').eq('id', escrow_id).single();
-      return data;
-    }
-    const { data: escrow, error } = await supabase
+    // Server-side idempotency: only flip if currently 'active' or 'disputed'.
+    const { data: updated, error } = await supabase
       .from('escrows')
       .update({ status: 'refunded' as const, on_chain_status: 'spent' })
       .eq('id', escrow_id)
+      .in('status', ['active', 'disputed'])
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    return escrow;
+    if (updated) return updated;
+
+    const { data: existing, error: fErr } = await supabase
+      .from('escrows')
+      .select('*')
+      .eq('id', escrow_id)
+      .single();
+    if (fErr) throw new Error(fErr.message);
+    if (existing.status === 'refunded') return existing;
+    throw new Error(`Cannot confirm refund: escrow is in '${existing.status}' state`);
   },
 
   /** @deprecated Use recordRefundSubmission + confirmRefund. */
