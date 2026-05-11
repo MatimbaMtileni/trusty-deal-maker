@@ -55,9 +55,10 @@ async function callTxBuilder(params: Record<string, unknown>): Promise<TxBuildRe
 // Slot conversion – Preprod genesis parameters
 // ============================================================================
 
-// Preprod shelley genesis: slot 0 = 2022-04-01T00:00:00Z, 1 slot = 1 second
-const PREPROD_SHELLEY_START_UNIX_MS = 1654041600000; // 2022-06-01T00:00:00Z (shelley start on preprod)
-const PREPROD_SHELLEY_START_SLOT = 0;
+// Preprod Shelley genesis: 2022-06-20T00:00:00Z = slot 86400 (after 1-day Byron era).
+// 1 slot = 1 second.
+const PREPROD_SHELLEY_START_UNIX_MS = 1655683200000; // 2022-06-20T00:00:00Z
+const PREPROD_SHELLEY_START_SLOT = 86400;
 const SLOT_LENGTH_MS = 1000;
 
 /**
