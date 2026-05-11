@@ -17,7 +17,7 @@ import {
 import { useUserRole } from '@/hooks/useUserRole';
 import { adminApi, AdminUserRow } from '@/services/adminApi';
 import { useToast } from '@/hooks/use-toast';
-import { lovelaceToAda } from '@/services/lucidService';
+import { lovelaceToAda } from '@/services/cardano/networkGuard';
 import { format } from 'date-fns';
 
 const formatAddr = (a?: string | null) => (a ? `${a.slice(0, 10)}…${a.slice(-6)}` : '—');

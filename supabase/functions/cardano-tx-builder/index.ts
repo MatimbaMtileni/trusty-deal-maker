@@ -220,7 +220,15 @@ async function buildSpendTx(lucid: Lucid, params: SpendRequest, kind: "release" 
   if (kind === "release") {
     txBuilder = txBuilder.addSigner(buyerAddress).addSigner(sellerAddress);
   } else {
-    txBuilder = txBuilder.addSigner(buyerAddress).validFrom(Date.now());
+    // Refund: native script requires `after deadlineSlot`, so the tx's
+    // validity-interval-start MUST be >= deadlineSlot. Use deadlineSlot
+    // directly (lucid's validFrom takes a POSIX-ms timestamp on Preprod).
+    const PREPROD_SHELLEY_START_UNIX_MS = 1655683200000;
+    const PREPROD_SHELLEY_START_SLOT = 86400;
+    const deadlineMs =
+      PREPROD_SHELLEY_START_UNIX_MS +
+      (deadlineSlot - PREPROD_SHELLEY_START_SLOT) * 1000;
+    txBuilder = txBuilder.addSigner(buyerAddress).validFrom(deadlineMs);
   }
 
   const tx = await txBuilder.complete({ nativeUplc: false });

@@ -24,7 +24,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { WalletConnectModal } from '@/components/wallet/WalletConnectModal';
 import { escrowApi } from '@/services/escrowApi';
-import { adaToLovelace } from '@/services/lucidService';
+import { adaToLovelace } from '@/services/cardano/networkGuard';
 import { executeEscrowFund } from '@/services/cardano/txBuilder';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';

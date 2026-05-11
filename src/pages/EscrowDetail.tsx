@@ -37,7 +37,7 @@ import { FlagDisputeButton } from '@/components/escrow/FlagDisputeButton';
 import { TxConfirmationCard } from '@/components/escrow/TxConfirmationCard';
 import { escrowApi } from '@/services/escrowApi';
 import { supabase } from '@/integrations/supabase/client';
-import { lovelaceToAda, adaToLovelace } from '@/services/lucidService';
+import { lovelaceToAda, adaToLovelace } from '@/services/cardano/networkGuard';
 import { initiateEscrowRelease, completeEscrowRelease, executeEscrowRefund, executeEscrowFund } from '@/services/cardano/txBuilder';
 import { useToast } from '@/hooks/use-toast';
 import { useTxConfirmation } from '@/hooks/useTxConfirmation';

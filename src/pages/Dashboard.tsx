@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { EscrowCard } from '@/components/escrow/EscrowCard';
 import { WalletConnectModal } from '@/components/wallet/WalletConnectModal';
 import { escrowApi } from '@/services/escrowApi';
-import { lovelaceToAda } from '@/services/lucidService';
+import { lovelaceToAda } from '@/services/cardano/networkGuard';
 import { UserRole } from '@/types/escrow';
 import { useToast } from '@/hooks/use-toast';
 
