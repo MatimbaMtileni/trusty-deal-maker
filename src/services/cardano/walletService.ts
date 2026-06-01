@@ -97,11 +97,20 @@ class WalletService {
       } | undefined;
 
       if (!walletProvider?.enable) {
-        throw new Error(`${walletName} wallet is not installed`);
+        throw new Error(`${walletName} wallet is not installed, or the page is running inside an iframe where the extension is not injected. Open the app in a new browser tab.`);
       }
 
-      // Request wallet access
-      const api = await walletProvider.enable();
+      // Request wallet access (with 60s timeout so we don't hang forever
+      // if the wallet popup is blocked or dismissed silently)
+      const api = await Promise.race([
+        walletProvider.enable(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Wallet approval timed out. Open the wallet extension, approve the connection, and try again. If the app is in an iframe, open it in a new tab.')),
+            60_000
+          )
+        ),
+      ]);
 
       // Verify network matches
       const networkId = await api.getNetworkId();
