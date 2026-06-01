@@ -127,13 +127,21 @@ class WalletService {
         ),
       ]);
 
-      // Verify network matches
+      // Verify network matches BEFORE doing any further wallet calls
       const networkId = await api.getNetworkId();
       const networkCheck = validateWalletNetwork(networkId);
-      
+
       if (!networkCheck.valid) {
-        throw new Error(networkCheck.message);
+        // Reset state and throw typed error so UI can show guided switch steps
+        this.updateState({ connected: false, connecting: false, error: networkCheck.message ?? 'Network mismatch' });
+        throw new WalletNetworkMismatchError(
+          walletName,
+          networkCheck.expected,
+          networkCheck.actual,
+          networkCheck.message ?? 'Network mismatch',
+        );
       }
+
 
       // Get addresses
       const usedAddresses = await api.getUsedAddresses();
