@@ -12,6 +12,21 @@ import { validateWalletNetwork, TARGET_NETWORK, lovelaceToAda } from './networkG
 import { blockchainService } from './blockchainService';
 import { hexToBech32 } from './addressUtils';
 
+/** Thrown when a wallet is on the wrong network. UI catches this to show guided switch steps. */
+export class WalletNetworkMismatchError extends Error {
+  readonly code = 'NETWORK_MISMATCH';
+  constructor(
+    public readonly walletName: string,
+    public readonly expected: string,
+    public readonly actual: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'WalletNetworkMismatchError';
+  }
+}
+
+
 /** Supported wallet keys */
 const SUPPORTED_WALLETS = [
   'nami', 'lace', 'eternl', 'flint', 'yoroi', 'typhon', 'gerowallet', 'vespr'
