@@ -1,10 +1,12 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Wallet, ExternalLink, AlertCircle, Download, CheckCircle2, Shield } from 'lucide-react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Wallet, ExternalLink, AlertCircle, Download, CheckCircle2, Shield, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { useWallet } from '@/contexts/WalletContext';
 import { TARGET_NETWORK } from '@/services/cardano';
+import { WalletNetworkMismatchError } from '@/services/cardano/walletService';
 
 const WALLET_DOWNLOAD_URLS: Record<string, string> = {
   nami: 'https://namiwallet.io',
@@ -19,6 +21,35 @@ const WALLET_DOWNLOAD_URLS: Record<string, string> = {
 
 const POPULAR_WALLETS = ['nami', 'lace', 'eternl', 'flint', 'yoroi'];
 
+/** Step-by-step network switch instructions per wallet */
+const SWITCH_STEPS: Record<string, string[]> = {
+  lace: [
+    'Click the Lace extension icon in your browser toolbar.',
+    'Open the menu (≡) in the top-left of the Lace window.',
+    'Select "Settings" → "Network".',
+    'Choose "Preprod Testnet" from the list.',
+    'Wait for Lace to re-sync, then click "Try Again" below.',
+  ],
+  nami: [
+    'Open the Nami extension.',
+    'Click the account avatar (top-right) → "Settings" → "Network".',
+    'Select "Preprod".',
+    'Return here and click "Try Again".',
+  ],
+  eternl: [
+    'Open the Eternl extension.',
+    'Click the gear icon → "General settings" → "Network".',
+    'Select "Preprod".',
+    'Return here and click "Try Again".',
+  ],
+  default: [
+    'Open your wallet extension settings.',
+    'Find the Network section.',
+    'Switch the network to "Preprod" (testnet).',
+    'Return here and click "Try Again".',
+  ],
+};
+
 interface WalletConnectModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,13 +57,18 @@ interface WalletConnectModalProps {
 
 export const WalletConnectModal: React.FC<WalletConnectModalProps> = ({ open, onOpenChange }) => {
   const { connect, isConnecting, installedWallets } = useWallet();
+  const [networkError, setNetworkError] = useState<WalletNetworkMismatchError | null>(null);
 
   const handleConnect = async (walletName: string) => {
+    setNetworkError(null);
     try {
       await connect(walletName);
       onOpenChange(false);
     } catch (error) {
-      // Error is already handled in context with toast
+      if (error instanceof WalletNetworkMismatchError) {
+        setNetworkError(error);
+      }
+      // Other errors are handled in context with toast
     }
   };
 
@@ -45,6 +81,7 @@ export const WalletConnectModal: React.FC<WalletConnectModalProps> = ({ open, on
 
   const networkLabel = TARGET_NETWORK.charAt(0).toUpperCase() + TARGET_NETWORK.slice(1);
   const isTestnet = TARGET_NETWORK !== 'mainnet';
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
