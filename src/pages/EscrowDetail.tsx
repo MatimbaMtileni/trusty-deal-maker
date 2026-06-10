@@ -103,6 +103,7 @@ export const EscrowDetail: React.FC = () => {
   
   const [escrow, setEscrow] = useState<DbEscrow | null>(null);
   const [transactions, setTransactions] = useState<DbTransaction[]>([]);
+  const [pendingRelease, setPendingRelease] = useState<PendingRelease | null>(null);
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -159,12 +160,14 @@ export const EscrowDetail: React.FC = () => {
       if (!id) return;
 
       try {
-        const [escrowData, txData] = await Promise.all([
+        const [escrowData, txData, prRes] = await Promise.all([
           escrowApi.getEscrowById(id),
           escrowApi.getEscrowTransactions(id),
+          (supabase as any).from('escrow_pending_release').select('*').eq('escrow_id', id).maybeSingle(),
         ]);
         setEscrow(escrowData);
         setTransactions(txData || []);
+        setPendingRelease((prRes?.data as PendingRelease) ?? null);
 
         // Auto-populate seller_user_id if current user is the seller and it's not set yet
         if (escrowData && user && wallet && !escrowData.seller_user_id && escrowData.seller_address === wallet.address) {
@@ -212,14 +215,6 @@ export const EscrowDetail: React.FC = () => {
 
           setEscrow(updated);
 
-          // Notify seller when a pending release appears
-          if (updated.pending_release_tx_cbor && !old.pending_release_tx_cbor) {
-            toast({
-              title: '🔐 Co-signature Required',
-              description: 'The buyer has initiated a release. Please review and co-sign.',
-            });
-          }
-
           // Notify both when status changes to completed/refunded
           if (updated.status !== old.status) {
             if (updated.status === 'completed') {
@@ -228,6 +223,31 @@ export const EscrowDetail: React.FC = () => {
               toast({ title: '↩️ Escrow Refunded', description: 'Funds have been returned to the buyer.' });
             }
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'escrow_pending_release',
+          filter: `escrow_id=eq.${id}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            setPendingRelease(null);
+            return;
+          }
+          const next = payload.new as PendingRelease;
+          setPendingRelease((prev) => {
+            if (!prev && next?.tx_cbor) {
+              toast({
+                title: '🔐 Co-signature Required',
+                description: 'The buyer has initiated a release. Please review and co-sign.',
+              });
+            }
+            return next ?? null;
+          });
         }
       )
       .subscribe();
@@ -274,7 +294,7 @@ export const EscrowDetail: React.FC = () => {
 
   const isDeadlinePassed = displayEscrow ? isPast(displayEscrow.deadline) : false;
   const isFunded = !!(escrow?.utxo_tx_hash);
-  const hasPendingRelease = !!(escrow?.pending_release_tx_cbor);
+  const hasPendingRelease = !!pendingRelease;
   const canRelease = userRole === 'buyer' && displayEscrow?.status === 'active' && isFunded && !hasPendingRelease;
   const canCoSign = userRole === 'seller' && displayEscrow?.status === 'active' && isFunded && hasPendingRelease;
   const canRefund = userRole === 'buyer' && displayEscrow?.status === 'active' && isDeadlinePassed && isFunded;
