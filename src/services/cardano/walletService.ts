@@ -393,8 +393,45 @@ class WalletService {
     } catch (error) {
       console.warn('[Wallet] CBOR parse error, falling back to 0:', error);
       return 0n;
+  /**
+   * Extract the lovelace amount from a single UTxO CBOR returned by
+   * CIP-30 getUtxos(). A UTxO is [TransactionInput, TransactionOutput].
+   * TransactionOutput is either a legacy array [address, value, ...] or a
+   * Babbage map { 0: address, 1: value, 2: datum, 3: script_ref }.
+   * Value is `coin` (uint) or `[coin, multiasset]`.
+   */
+  private parseUtxoCoin(utxoCbor: string): bigint {
+    try {
+      const bytes = new Uint8Array(utxoCbor.length / 2);
+      for (let i = 0; i < utxoCbor.length; i += 2) {
+        bytes[i / 2] = parseInt(utxoCbor.substr(i, 2), 16);
+      }
+      const decoded = decode(bytes);
+      if (!Array.isArray(decoded) || decoded.length < 2) return 0n;
+      const output = decoded[1];
+
+      let value: unknown;
+      if (Array.isArray(output)) {
+        value = output[1];
+      } else if (output && typeof output === 'object') {
+        // Babbage map keyed by integers
+        value = (output as Record<number, unknown>)[1] ?? (output as Map<number, unknown>).get?.(1);
+      }
+
+      if (typeof value === 'number') return BigInt(value);
+      if (typeof value === 'bigint') return value;
+      if (Array.isArray(value)) {
+        const coin = value[0];
+        if (typeof coin === 'number') return BigInt(coin);
+        if (typeof coin === 'bigint') return coin;
+      }
+      return 0n;
+    } catch (err) {
+      console.warn('[Wallet] parseUtxoCoin failed:', err);
+      return 0n;
     }
   }
+}
 
   private startBalancePolling(): void {
     this.stopBalancePolling();
