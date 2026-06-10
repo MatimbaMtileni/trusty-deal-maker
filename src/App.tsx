@@ -81,6 +81,14 @@ const App = () => {
                     </RequireAuth>
                   }
                 />
+                <Route
+                  path="/transactions-cleared"
+                  element={
+                    <RequireAuth>
+                      <TransactionsCleared />
+                    </RequireAuth>
+                  }
+                />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
