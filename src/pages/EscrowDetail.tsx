@@ -74,9 +74,13 @@ interface DbEscrow {
    requires_multi_sig?: boolean;
    buyer_signed_at?: string | null;
    seller_signed_at?: string | null;
-   pending_release_tx_cbor?: string | null;
-   pending_release_script_witness?: string | null;
-   pending_release_buyer_witness?: string | null;
+}
+
+interface PendingRelease {
+  escrow_id: string;
+  tx_cbor: string;
+  buyer_witness: string;
+  script_witness: string | null;
 }
 
 interface DbTransaction {
