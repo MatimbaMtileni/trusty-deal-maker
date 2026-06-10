@@ -393,6 +393,9 @@ class WalletService {
     } catch (error) {
       console.warn('[Wallet] CBOR parse error, falling back to 0:', error);
       return 0n;
+    }
+  }
+
   /**
    * Extract the lovelace amount from a single UTxO CBOR returned by
    * CIP-30 getUtxos(). A UTxO is [TransactionInput, TransactionOutput].
@@ -414,8 +417,8 @@ class WalletService {
       if (Array.isArray(output)) {
         value = output[1];
       } else if (output && typeof output === 'object') {
-        // Babbage map keyed by integers
-        value = (output as Record<number, unknown>)[1] ?? (output as Map<number, unknown>).get?.(1);
+        const map = output as Record<number, unknown> & { get?: (k: number) => unknown };
+        value = map[1] ?? map.get?.(1);
       }
 
       if (typeof value === 'number') return BigInt(value);
@@ -431,7 +434,6 @@ class WalletService {
       return 0n;
     }
   }
-}
 
   private startBalancePolling(): void {
     this.stopBalancePolling();
