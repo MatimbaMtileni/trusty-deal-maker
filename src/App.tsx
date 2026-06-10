@@ -14,6 +14,7 @@ import EscrowDetail from "./pages/EscrowDetail";
 import Analytics from "./pages/Analytics";
 import Admin from "./pages/Admin";
 import Auth from "./pages/Auth";
+import TransactionsCleared from "./pages/TransactionsCleared";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
