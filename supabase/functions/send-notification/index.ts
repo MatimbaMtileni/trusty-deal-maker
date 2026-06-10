@@ -191,7 +191,8 @@ const handler = async (req: Request): Promise<Response> => {
     const emailResult = await emailResponse.json();
     
     if (!emailResponse.ok) {
-      throw new Error(`Resend API error: ${JSON.stringify(emailResult)}`);
+      console.error("Resend API error", emailResult);
+      throw new Error("EMAIL_SEND_FAILED");
     }
 
     console.log("Email notification sent:", emailResult);
@@ -202,9 +203,8 @@ const handler = async (req: Request): Promise<Response> => {
     );
   } catch (error: unknown) {
     console.error("Error sending notification:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: "Notification could not be sent" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

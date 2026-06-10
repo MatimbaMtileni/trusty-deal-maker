@@ -137,7 +137,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (insertError) {
       console.error('DB insert error', { insertError, escrow_id, sender_address });
-      return jsonResponse(500, { error: insertError.message || 'Failed to save message', code: 'MESSAGE_INSERT_FAILED' });
+      return jsonResponse(500, { error: 'Failed to save message', code: 'MESSAGE_INSERT_FAILED' });
     }
 
     const inserted = Array.isArray(insertedRows) && insertedRows.length > 0 ? insertedRows[0] : null;
@@ -175,8 +175,7 @@ const handler = async (req: Request): Promise<Response> => {
 
   } catch (err) {
     console.error('Error in send-wallet-message:', err);
-    const msg = err instanceof Error ? err.message : String(err);
-    return jsonResponse(500, { error: msg, code: 'UNHANDLED_ERROR' });
+    return jsonResponse(500, { error: 'Internal server error', code: 'UNHANDLED_ERROR' });
   }
 };
 
