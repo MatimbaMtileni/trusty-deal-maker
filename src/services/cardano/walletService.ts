@@ -247,18 +247,40 @@ class WalletService {
   }
 
   /**
-   * Refresh balance from chain
+   * Refresh balance from chain.
+   * Prefer summing UTxOs (matches what the wallet UI shows across all its
+   * derived addresses), then fall back to wallet.getBalance() (which on some
+   * wallets like Lace under-reports by returning only the active account),
+   * and finally Blockfrost on the active payment address.
    */
   async refreshBalance(): Promise<void> {
     if (!this.state.api || !this.state.address) return;
 
+    // 1) Sum UTxOs — most accurate, matches wallet UI total
     try {
-      // Try wallet API first
+      const utxos = await this.state.api.getUtxos();
+      if (utxos && utxos.length > 0) {
+        let total = 0n;
+        for (const u of utxos) {
+          total += this.parseUtxoCoin(u);
+        }
+        if (total > 0n) {
+          this.updateState({ balance: total });
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[Wallet] getUtxos failed, falling back to getBalance:', err);
+    }
+
+    // 2) Wallet-reported balance
+    try {
       const balanceCbor = await this.state.api.getBalance();
       const balance = this.parseBalanceCbor(balanceCbor);
       this.updateState({ balance });
+      return;
     } catch {
-      // Fall back to blockchain query
+      // 3) On-chain query for the active payment address
       try {
         const balance = await blockchainService.getAddressBalance(this.state.address);
         this.updateState({ balance });
@@ -370,6 +392,45 @@ class WalletService {
       return 0n;
     } catch (error) {
       console.warn('[Wallet] CBOR parse error, falling back to 0:', error);
+      return 0n;
+    }
+  }
+
+  /**
+   * Extract the lovelace amount from a single UTxO CBOR returned by
+   * CIP-30 getUtxos(). A UTxO is [TransactionInput, TransactionOutput].
+   * TransactionOutput is either a legacy array [address, value, ...] or a
+   * Babbage map { 0: address, 1: value, 2: datum, 3: script_ref }.
+   * Value is `coin` (uint) or `[coin, multiasset]`.
+   */
+  private parseUtxoCoin(utxoCbor: string): bigint {
+    try {
+      const bytes = new Uint8Array(utxoCbor.length / 2);
+      for (let i = 0; i < utxoCbor.length; i += 2) {
+        bytes[i / 2] = parseInt(utxoCbor.substr(i, 2), 16);
+      }
+      const decoded = decode(bytes);
+      if (!Array.isArray(decoded) || decoded.length < 2) return 0n;
+      const output = decoded[1];
+
+      let value: unknown;
+      if (Array.isArray(output)) {
+        value = output[1];
+      } else if (output && typeof output === 'object') {
+        const map = output as Record<number, unknown> & { get?: (k: number) => unknown };
+        value = map[1] ?? map.get?.(1);
+      }
+
+      if (typeof value === 'number') return BigInt(value);
+      if (typeof value === 'bigint') return value;
+      if (Array.isArray(value)) {
+        const coin = value[0];
+        if (typeof coin === 'number') return BigInt(coin);
+        if (typeof coin === 'bigint') return coin;
+      }
+      return 0n;
+    } catch (err) {
+      console.warn('[Wallet] parseUtxoCoin failed:', err);
       return 0n;
     }
   }
