@@ -247,18 +247,40 @@ class WalletService {
   }
 
   /**
-   * Refresh balance from chain
+   * Refresh balance from chain.
+   * Prefer summing UTxOs (matches what the wallet UI shows across all its
+   * derived addresses), then fall back to wallet.getBalance() (which on some
+   * wallets like Lace under-reports by returning only the active account),
+   * and finally Blockfrost on the active payment address.
    */
   async refreshBalance(): Promise<void> {
     if (!this.state.api || !this.state.address) return;
 
+    // 1) Sum UTxOs — most accurate, matches wallet UI total
     try {
-      // Try wallet API first
+      const utxos = await this.state.api.getUtxos();
+      if (utxos && utxos.length > 0) {
+        let total = 0n;
+        for (const u of utxos) {
+          total += this.parseUtxoCoin(u);
+        }
+        if (total > 0n) {
+          this.updateState({ balance: total });
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[Wallet] getUtxos failed, falling back to getBalance:', err);
+    }
+
+    // 2) Wallet-reported balance
+    try {
       const balanceCbor = await this.state.api.getBalance();
       const balance = this.parseBalanceCbor(balanceCbor);
       this.updateState({ balance });
+      return;
     } catch {
-      // Fall back to blockchain query
+      // 3) On-chain query for the active payment address
       try {
         const balance = await blockchainService.getAddressBalance(this.state.address);
         this.updateState({ balance });
