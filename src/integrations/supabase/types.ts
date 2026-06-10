@@ -117,6 +117,41 @@ export type Database = {
           },
         ]
       }
+      escrow_pending_release: {
+        Row: {
+          buyer_witness: string
+          created_at: string
+          escrow_id: string
+          script_witness: string | null
+          tx_cbor: string
+          updated_at: string
+        }
+        Insert: {
+          buyer_witness: string
+          created_at?: string
+          escrow_id: string
+          script_witness?: string | null
+          tx_cbor: string
+          updated_at?: string
+        }
+        Update: {
+          buyer_witness?: string
+          created_at?: string
+          escrow_id?: string
+          script_witness?: string | null
+          tx_cbor?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "escrow_pending_release_escrow_id_fkey"
+            columns: ["escrow_id"]
+            isOneToOne: true
+            referencedRelation: "escrows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       escrow_transactions: {
         Row: {
           amount: number
@@ -177,9 +212,6 @@ export type Database = {
           id: string
           last_synced_at: string | null
           on_chain_status: string | null
-          pending_release_buyer_witness: string | null
-          pending_release_script_witness: string | null
-          pending_release_tx_cbor: string | null
           requires_multi_sig: boolean
           resolution_note: string | null
           resolved_at: string | null
@@ -212,9 +244,6 @@ export type Database = {
           id?: string
           last_synced_at?: string | null
           on_chain_status?: string | null
-          pending_release_buyer_witness?: string | null
-          pending_release_script_witness?: string | null
-          pending_release_tx_cbor?: string | null
           requires_multi_sig?: boolean
           resolution_note?: string | null
           resolved_at?: string | null
@@ -247,9 +276,6 @@ export type Database = {
           id?: string
           last_synced_at?: string | null
           on_chain_status?: string | null
-          pending_release_buyer_witness?: string | null
-          pending_release_script_witness?: string | null
-          pending_release_tx_cbor?: string | null
           requires_multi_sig?: boolean
           resolution_note?: string | null
           resolved_at?: string | null
