@@ -74,9 +74,13 @@ interface DbEscrow {
    requires_multi_sig?: boolean;
    buyer_signed_at?: string | null;
    seller_signed_at?: string | null;
-   pending_release_tx_cbor?: string | null;
-   pending_release_script_witness?: string | null;
-   pending_release_buyer_witness?: string | null;
+}
+
+interface PendingRelease {
+  escrow_id: string;
+  tx_cbor: string;
+  buyer_witness: string;
+  script_witness: string | null;
 }
 
 interface DbTransaction {
@@ -99,6 +103,7 @@ export const EscrowDetail: React.FC = () => {
   
   const [escrow, setEscrow] = useState<DbEscrow | null>(null);
   const [transactions, setTransactions] = useState<DbTransaction[]>([]);
+  const [pendingRelease, setPendingRelease] = useState<PendingRelease | null>(null);
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -155,12 +160,14 @@ export const EscrowDetail: React.FC = () => {
       if (!id) return;
 
       try {
-        const [escrowData, txData] = await Promise.all([
+        const [escrowData, txData, prRes] = await Promise.all([
           escrowApi.getEscrowById(id),
           escrowApi.getEscrowTransactions(id),
+          (supabase as any).from('escrow_pending_release').select('*').eq('escrow_id', id).maybeSingle(),
         ]);
         setEscrow(escrowData);
         setTransactions(txData || []);
+        setPendingRelease((prRes?.data as PendingRelease) ?? null);
 
         // Auto-populate seller_user_id if current user is the seller and it's not set yet
         if (escrowData && user && wallet && !escrowData.seller_user_id && escrowData.seller_address === wallet.address) {
@@ -208,14 +215,6 @@ export const EscrowDetail: React.FC = () => {
 
           setEscrow(updated);
 
-          // Notify seller when a pending release appears
-          if (updated.pending_release_tx_cbor && !old.pending_release_tx_cbor) {
-            toast({
-              title: '🔐 Co-signature Required',
-              description: 'The buyer has initiated a release. Please review and co-sign.',
-            });
-          }
-
           // Notify both when status changes to completed/refunded
           if (updated.status !== old.status) {
             if (updated.status === 'completed') {
@@ -224,6 +223,31 @@ export const EscrowDetail: React.FC = () => {
               toast({ title: '↩️ Escrow Refunded', description: 'Funds have been returned to the buyer.' });
             }
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'escrow_pending_release',
+          filter: `escrow_id=eq.${id}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            setPendingRelease(null);
+            return;
+          }
+          const next = payload.new as PendingRelease;
+          setPendingRelease((prev) => {
+            if (!prev && next?.tx_cbor) {
+              toast({
+                title: '🔐 Co-signature Required',
+                description: 'The buyer has initiated a release. Please review and co-sign.',
+              });
+            }
+            return next ?? null;
+          });
         }
       )
       .subscribe();
@@ -270,7 +294,7 @@ export const EscrowDetail: React.FC = () => {
 
   const isDeadlinePassed = displayEscrow ? isPast(displayEscrow.deadline) : false;
   const isFunded = !!(escrow?.utxo_tx_hash);
-  const hasPendingRelease = !!(escrow?.pending_release_tx_cbor);
+  const hasPendingRelease = !!pendingRelease;
   const canRelease = userRole === 'buyer' && displayEscrow?.status === 'active' && isFunded && !hasPendingRelease;
   const canCoSign = userRole === 'seller' && displayEscrow?.status === 'active' && isFunded && hasPendingRelease;
   const canRefund = userRole === 'buyer' && displayEscrow?.status === 'active' && isDeadlinePassed && isFunded;
@@ -376,18 +400,30 @@ export const EscrowDetail: React.FC = () => {
         throw new Error(result.error || 'Failed to initiate release');
       }
 
-      // Store partial tx in DB for seller to co-sign
+      // Store partial tx in restricted pending-release table
+      const { error: prError } = await (supabase as any)
+        .from('escrow_pending_release')
+        .upsert({
+          escrow_id: escrow.id,
+          tx_cbor: result.unsignedTxCbor,
+          buyer_witness: result.buyerWitness,
+          script_witness: result.scriptWitness || null,
+        });
+      if (prError) throw new Error('Failed to save pending release');
+
+      // Record buyer signature on escrow row
       const { error: updateError } = await supabase
         .from('escrows')
-        .update({
-          pending_release_tx_cbor: result.unsignedTxCbor,
-          pending_release_buyer_witness: result.buyerWitness,
-          pending_release_script_witness: result.scriptWitness || null,
-          buyer_signed_at: new Date().toISOString(),
-        })
+        .update({ buyer_signed_at: new Date().toISOString() })
         .eq('id', escrow.id);
+      if (updateError) throw new Error('Failed to save signature');
 
-      if (updateError) throw new Error('Failed to save pending release');
+      setPendingRelease({
+        escrow_id: escrow.id,
+        tx_cbor: result.unsignedTxCbor,
+        buyer_witness: result.buyerWitness,
+        script_witness: result.scriptWitness || null,
+      });
 
       // Refresh escrow data
       const updatedEscrow = await escrowApi.getEscrowById(escrow.id);
@@ -422,7 +458,7 @@ export const EscrowDetail: React.FC = () => {
 
   const handleCoSignRelease = async () => {
     if (!displayEscrow || !wallet || !walletApi || !escrow || !user) return;
-    if (!escrow.pending_release_tx_cbor || !escrow.pending_release_buyer_witness) return;
+    if (!pendingRelease?.tx_cbor || !pendingRelease?.buyer_witness) return;
 
     setIsProcessing(true);
     try {
@@ -441,9 +477,9 @@ export const EscrowDetail: React.FC = () => {
       });
 
       const result = await completeEscrowRelease(walletApi, {
-        unsignedTxCbor: escrow.pending_release_tx_cbor,
-        buyerWitness: escrow.pending_release_buyer_witness,
-        scriptWitness: escrow.pending_release_script_witness || '',
+        unsignedTxCbor: pendingRelease.tx_cbor,
+        buyerWitness: pendingRelease.buyer_witness,
+        scriptWitness: pendingRelease.script_witness || '',
       });
 
       if (!result.success || !result.txHash) {
@@ -457,15 +493,15 @@ export const EscrowDetail: React.FC = () => {
         tx_hash: result.txHash,
       });
 
-      // Clear pending release fields and record seller signature
+      // Clear pending release artifacts and record seller signature
+      await (supabase as any)
+        .from('escrow_pending_release')
+        .delete()
+        .eq('escrow_id', escrow.id);
+      setPendingRelease(null);
       await supabase
         .from('escrows')
-        .update({
-          pending_release_tx_cbor: null,
-          pending_release_buyer_witness: null,
-          pending_release_script_witness: null,
-          seller_signed_at: new Date().toISOString(),
-        })
+        .update({ seller_signed_at: new Date().toISOString() })
         .eq('id', escrow.id);
 
       setTransactions(prev => [...prev, transaction]);
