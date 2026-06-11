@@ -2,111 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Cardano Escrow DApp - Web3 Dark Theme
-   Neon cyan/purple accents with glassmorphism
+/* CardanoEscrow — Glass Aurora
+   Deep navy base with aurora green + violet accents, glassmorphism surfaces.
+   Palette: #1a1a2e bg, #16213e surface, #4ade80 green, #a78bfa violet.
 */
 
 @layer base {
   :root {
-    --background: 222 47% 6%;
+    --background: 240 27% 14%;            /* #1a1a2e */
     --foreground: 210 40% 98%;
 
-    --card: 222 47% 8%;
+    --card: 220 49% 16%;                  /* #16213e */
     --card-foreground: 210 40% 98%;
 
-    --popover: 222 47% 10%;
+    --popover: 220 49% 14%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 186 100% 50%;
-    --primary-foreground: 222 47% 6%;
+    --primary: 142 71% 58%;               /* #4ade80 aurora green */
+    --primary-foreground: 240 27% 10%;
 
-    --secondary: 270 100% 65%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 252 94% 76%;             /* #a78bfa aurora violet */
+    --secondary-foreground: 240 27% 10%;
 
-    --muted: 222 30% 15%;
-    --muted-foreground: 215 20% 55%;
+    --muted: 222 30% 18%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 270 100% 65%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 252 94% 76%;
+    --accent-foreground: 240 27% 10%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
-    --success: 142 76% 45%;
-    --success-foreground: 210 40% 98%;
+    --success: 142 71% 58%;
+    --success-foreground: 240 27% 10%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 6%;
+    --warning: 38 92% 60%;
+    --warning-foreground: 240 27% 10%;
 
-    --border: 222 30% 18%;
-    --input: 222 30% 15%;
-    --ring: 186 100% 50%;
+    --border: 220 30% 22%;
+    --input: 220 30% 18%;
+    --ring: 252 94% 76%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
 
-    /* Custom gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(186 100% 50%) 0%, hsl(270 100% 65%) 100%);
-    --gradient-glow: 0 0 20px hsl(186 100% 50% / 0.3), 0 0 40px hsl(270 100% 65% / 0.2);
-    --gradient-card: linear-gradient(135deg, hsl(222 47% 10% / 0.8) 0%, hsl(222 47% 8% / 0.9) 100%);
+    /* Aurora design tokens */
+    --gradient-primary: linear-gradient(135deg, hsl(142 71% 58%) 0%, hsl(252 94% 76%) 100%);
+    --gradient-aurora: radial-gradient(ellipse at top left, hsl(252 94% 76% / 0.18) 0%, transparent 55%),
+                       radial-gradient(ellipse at bottom right, hsl(142 71% 58% / 0.14) 0%, transparent 55%);
+    --gradient-glow: 0 0 30px hsl(252 94% 76% / 0.25), 0 0 60px hsl(142 71% 58% / 0.15);
+    --gradient-card: linear-gradient(135deg, hsl(220 49% 18% / 0.7) 0%, hsl(240 27% 14% / 0.85) 100%);
 
-    /* Glassmorphism */
-    --glass-bg: hsl(222 47% 10% / 0.6);
-    --glass-border: hsl(186 100% 50% / 0.1);
-    --glass-shadow: 0 8px 32px hsl(0 0% 0% / 0.3);
+    --glass-bg: hsl(220 49% 18% / 0.5);
+    --glass-border: hsl(0 0% 100% / 0.08);
+    --glass-shadow: 0 8px 40px hsl(240 27% 4% / 0.5);
 
-    --sidebar-background: 222 47% 8%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 186 100% 50%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 222 30% 15%;
+    --sidebar-background: 240 27% 12%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 252 94% 76%;
+    --sidebar-primary-foreground: 240 27% 10%;
+    --sidebar-accent: 220 49% 18%;
     --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 222 30% 18%;
-    --sidebar-ring: 186 100% 50%;
+    --sidebar-border: 220 30% 22%;
+    --sidebar-ring: 252 94% 76%;
   }
 
   .dark {
-    --background: 222 47% 6%;
+    --background: 240 27% 14%;
     --foreground: 210 40% 98%;
-
-    --card: 222 47% 8%;
+    --card: 220 49% 16%;
     --card-foreground: 210 40% 98%;
-
-    --popover: 222 47% 10%;
+    --popover: 220 49% 14%;
     --popover-foreground: 210 40% 98%;
-
-    --primary: 186 100% 50%;
-    --primary-foreground: 222 47% 6%;
-
-    --secondary: 270 100% 65%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 222 30% 15%;
-    --muted-foreground: 215 20% 55%;
-
-    --accent: 270 100% 65%;
-    --accent-foreground: 210 40% 98%;
-
+    --primary: 142 71% 58%;
+    --primary-foreground: 240 27% 10%;
+    --secondary: 252 94% 76%;
+    --secondary-foreground: 240 27% 10%;
+    --muted: 222 30% 18%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 252 94% 76%;
+    --accent-foreground: 240 27% 10%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
+    --success: 142 71% 58%;
+    --success-foreground: 240 27% 10%;
+    --warning: 38 92% 60%;
+    --warning-foreground: 240 27% 10%;
+    --border: 220 30% 22%;
+    --input: 220 30% 18%;
+    --ring: 252 94% 76%;
 
-    --success: 142 76% 45%;
-    --success-foreground: 210 40% 98%;
-
-    --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 6%;
-
-    --border: 222 30% 18%;
-    --input: 222 30% 15%;
-    --ring: 186 100% 50%;
-
-    --sidebar-background: 222 47% 8%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 186 100% 50%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 222 30% 15%;
+    --sidebar-background: 240 27% 12%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 252 94% 76%;
+    --sidebar-primary-foreground: 240 27% 10%;
+    --sidebar-accent: 220 49% 18%;
     --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 222 30% 18%;
-    --sidebar-ring: 186 100% 50%;
+    --sidebar-border: 220 30% 22%;
+    --sidebar-ring: 252 94% 76%;
   }
 }
 
@@ -121,16 +113,24 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    background-image: 
-      radial-gradient(ellipse at top, hsl(270 100% 65% / 0.1) 0%, transparent 50%),
-      radial-gradient(ellipse at bottom right, hsl(186 100% 50% / 0.08) 0%, transparent 50%);
+    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+    background-image: var(--gradient-aurora);
     background-attachment: fixed;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-display {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  .font-mono, code, pre {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
   }
 }
 
 @layer components {
   .glass-card {
-    @apply bg-card/60 backdrop-blur-xl border border-border/50 rounded-xl;
+    @apply bg-card/50 backdrop-blur-xl border border-white/10 rounded-2xl;
     box-shadow: var(--glass-shadow);
   }
 
@@ -182,7 +182,7 @@
   }
 
   .status-completed {
-    @apply text-success bg-success/10 border-success/30;
+    @apply text-secondary bg-secondary/10 border-secondary/30;
   }
 
   .status-refunded {
@@ -192,23 +192,44 @@
   .status-disputed {
     @apply text-destructive bg-destructive/10 border-destructive/30;
   }
+
+  .aurora-bg::before {
+    content: '';
+    position: absolute;
+    inset: -20%;
+    background:
+      radial-gradient(ellipse at 20% 20%, hsl(252 94% 76% / 0.22) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, hsl(142 71% 58% / 0.18) 0%, transparent 55%);
+    filter: blur(60px);
+    z-index: 0;
+    pointer-events: none;
+  }
 }
 
 @layer utilities {
   .animate-glow {
-    animation: glow 2s ease-in-out infinite alternate;
+    animation: glow 2.5s ease-in-out infinite alternate;
   }
 
   @keyframes glow {
     from {
-      box-shadow: 0 0 10px hsl(186 100% 50% / 0.3), 0 0 20px hsl(270 100% 65% / 0.2);
+      box-shadow: 0 0 12px hsl(142 71% 58% / 0.25), 0 0 24px hsl(252 94% 76% / 0.18);
     }
     to {
-      box-shadow: 0 0 20px hsl(186 100% 50% / 0.5), 0 0 40px hsl(270 100% 65% / 0.3);
+      box-shadow: 0 0 28px hsl(142 71% 58% / 0.45), 0 0 48px hsl(252 94% 76% / 0.3);
     }
   }
 
   .animate-pulse-slow {
     animation: pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes aurora-drift {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(4%, -3%) scale(1.05); }
+  }
+
+  .animate-aurora {
+    animation: aurora-drift 18s ease-in-out infinite;
   }
 }
