@@ -35,6 +35,7 @@ import { EscrowAttachments } from '@/components/escrow/EscrowAttachments';
 import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { FlagDisputeButton } from '@/components/escrow/FlagDisputeButton';
 import { TxConfirmationCard } from '@/components/escrow/TxConfirmationCard';
+import { TxStatusPanel } from '@/components/escrow/TxStatusPanel';
 import { escrowApi } from '@/services/escrowApi';
 import { supabase } from '@/integrations/supabase/client';
 import { lovelaceToAda, adaToLovelace } from '@/services/cardano/networkGuard';
@@ -118,6 +119,12 @@ export const EscrowDetail: React.FC = () => {
   }, [escrow]);
 
   const [pendingFinalize, setPendingFinalize] = useState<null | 'release' | 'refund'>(null);
+  const [txPanel, setTxPanel] = useState<{
+    kind: 'release' | 'refund';
+    phase: 'idle' | 'built' | 'signed' | 'submitted' | 'confirmed' | 'error';
+    txHash?: string | null;
+    error?: string | null;
+  }>({ kind: 'release', phase: 'idle' });
 
   const txConfirmation = useTxConfirmation({
     requiredConfirmations,
@@ -129,6 +136,7 @@ export const EscrowDetail: React.FC = () => {
         if (pendingFinalize === 'release') {
           const updated = await escrowApi.confirmRelease(escrow.id);
           setEscrow(updated as DbEscrow);
+          setTxPanel((p) => ({ ...p, phase: 'confirmed' }));
           toast({
             title: 'Release Finalized',
             description: `Confirmed in ${state.status.confirmations} blocks. Escrow marked as completed.`,
@@ -136,6 +144,7 @@ export const EscrowDetail: React.FC = () => {
         } else if (pendingFinalize === 'refund') {
           const updated = await escrowApi.confirmRefund(escrow.id);
           setEscrow(updated as DbEscrow);
+          setTxPanel((p) => ({ ...p, phase: 'confirmed' }));
           toast({
             title: 'Refund Finalized',
             description: `Confirmed in ${state.status.confirmations} blocks. Escrow marked as refunded.`,
@@ -383,6 +392,7 @@ export const EscrowDetail: React.FC = () => {
     
     setIsProcessing(true);
     try {
+      setTxPanel({ kind: 'release', phase: 'built', txHash: null, error: null });
       toast({
         title: 'Wallet Authorization Required',
         description: 'Please approve the release initiation in your wallet (Step 1 of 2)...',
@@ -439,6 +449,7 @@ export const EscrowDetail: React.FC = () => {
         },
       }).catch((err) => console.warn('Email notification failed (non-blocking):', err));
 
+      setTxPanel({ kind: 'release', phase: 'signed', txHash: null, error: null });
       toast({
         title: 'Release Initiated!',
         description: 'Waiting for the seller to co-sign. They will see a "Co-sign Release" button.',
@@ -446,10 +457,12 @@ export const EscrowDetail: React.FC = () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        setTxPanel({ kind: 'release', phase: 'idle' });
         toast({ variant: 'destructive', title: 'Transaction Cancelled', description: 'You cancelled the wallet authorization' });
         setIsProcessing(false);
         return;
       }
+      setTxPanel({ kind: 'release', phase: 'error', error: errorMessage });
       toast({ variant: 'destructive', title: 'Release Failed', description: errorMessage });
     } finally {
       setIsProcessing(false);
@@ -471,6 +484,7 @@ export const EscrowDetail: React.FC = () => {
         setEscrow(prev => prev ? { ...prev, seller_user_id: user.id } : prev);
       }
 
+      setTxPanel({ kind: 'release', phase: 'built', txHash: null, error: null });
       toast({
         title: 'Wallet Authorization Required',
         description: 'Please approve the release co-signing in your wallet (Step 2 of 2)...',
@@ -485,6 +499,8 @@ export const EscrowDetail: React.FC = () => {
       if (!result.success || !result.txHash) {
         throw new Error(result.error || 'Transaction failed');
       }
+
+      setTxPanel({ kind: 'release', phase: 'signed', txHash: result.txHash, error: null });
 
       // Record submission only — DO NOT mark as completed yet.
       // Status flips to `completed` after N confirmations (see useTxConfirmation).
@@ -509,6 +525,7 @@ export const EscrowDetail: React.FC = () => {
 
       // Start polling Blockfrost. Status flip happens in onConfirmed.
       setPendingFinalize('release');
+      setTxPanel({ kind: 'release', phase: 'submitted', txHash: result.txHash, error: null });
       txConfirmation.track(result.txHash).catch((err) => {
         console.error('[release] confirmation tracking failed:', err);
       });
@@ -520,10 +537,12 @@ export const EscrowDetail: React.FC = () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        setTxPanel({ kind: 'release', phase: 'idle' });
         toast({ variant: 'destructive', title: 'Transaction Cancelled', description: 'You cancelled the wallet authorization' });
         setIsProcessing(false);
         return;
       }
+      setTxPanel((p) => ({ ...p, kind: 'release', phase: 'error', error: errorMessage }));
       toast({ variant: 'destructive', title: 'Co-sign Failed', description: errorMessage });
     } finally {
       setIsProcessing(false);
@@ -535,6 +554,7 @@ export const EscrowDetail: React.FC = () => {
     
     setIsProcessing(true);
     try {
+      setTxPanel({ kind: 'refund', phase: 'built', txHash: null, error: null });
       toast({
         title: 'Wallet Authorization Required',
         description: 'Please approve the refund in your wallet...',
@@ -552,6 +572,8 @@ export const EscrowDetail: React.FC = () => {
         throw new Error(result.error || 'Transaction failed');
       }
 
+      setTxPanel({ kind: 'refund', phase: 'signed', txHash: result.txHash, error: null });
+
       const { transaction } = await escrowApi.recordRefundSubmission({
         escrow_id: displayEscrow.id,
         tx_hash: result.txHash,
@@ -562,6 +584,7 @@ export const EscrowDetail: React.FC = () => {
 
       // Wait for N confirmations before flipping status to `refunded`.
       setPendingFinalize('refund');
+      setTxPanel({ kind: 'refund', phase: 'submitted', txHash: result.txHash, error: null });
       txConfirmation.track(result.txHash).catch((err) => {
         console.error('[refund] confirmation tracking failed:', err);
       });
@@ -572,8 +595,9 @@ export const EscrowDetail: React.FC = () => {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-       
+
       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        setTxPanel({ kind: 'refund', phase: 'idle' });
         toast({
           variant: 'destructive',
           title: 'Transaction Cancelled',
@@ -582,7 +606,8 @@ export const EscrowDetail: React.FC = () => {
         setIsProcessing(false);
         return;
       }
-       
+
+      setTxPanel({ kind: 'refund', phase: 'error', error: errorMessage });
       toast({
         variant: 'destructive',
         title: 'Refund Failed',
@@ -795,6 +820,21 @@ export const EscrowDetail: React.FC = () => {
                   : `${formatDistanceToNow(displayEscrow.deadline)} remaining`}
               </p>
             </div>
+
+            {/* Lifecycle panel: Built → Signed → Submitted → Confirmed */}
+            <TxStatusPanel
+              kind={txPanel.kind}
+              phase={txPanel.phase}
+              txHash={txPanel.txHash}
+              error={txPanel.error}
+              confirmations={txConfirmation.state?.status.confirmations ?? 0}
+              requiredConfirmations={requiredConfirmations}
+              onClose={() => {
+                setTxPanel({ kind: txPanel.kind, phase: 'idle' });
+                txConfirmation.reset();
+                setPendingFinalize(null);
+              }}
+            />
 
             {/* Confirmation tracker — shown while a release/refund tx is awaiting N confirmations */}
             {txConfirmation.state && (txConfirmation.isTracking || pendingFinalize) && (
