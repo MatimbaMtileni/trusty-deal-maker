@@ -35,6 +35,7 @@ import { EscrowAttachments } from '@/components/escrow/EscrowAttachments';
 import { EscrowQRShare } from '@/components/escrow/EscrowQRShare';
 import { FlagDisputeButton } from '@/components/escrow/FlagDisputeButton';
 import { TxConfirmationCard } from '@/components/escrow/TxConfirmationCard';
+import { TxStatusPanel } from '@/components/escrow/TxStatusPanel';
 import { escrowApi } from '@/services/escrowApi';
 import { supabase } from '@/integrations/supabase/client';
 import { lovelaceToAda, adaToLovelace } from '@/services/cardano/networkGuard';
