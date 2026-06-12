@@ -391,6 +391,7 @@ export const EscrowDetail: React.FC = () => {
     
     setIsProcessing(true);
     try {
+      setTxPanel({ kind: 'release', phase: 'built', txHash: null, error: null });
       toast({
         title: 'Wallet Authorization Required',
         description: 'Please approve the release initiation in your wallet (Step 1 of 2)...',
