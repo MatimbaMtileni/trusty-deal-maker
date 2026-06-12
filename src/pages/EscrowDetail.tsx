@@ -135,6 +135,7 @@ export const EscrowDetail: React.FC = () => {
         if (pendingFinalize === 'release') {
           const updated = await escrowApi.confirmRelease(escrow.id);
           setEscrow(updated as DbEscrow);
+          setTxPanel((p) => ({ ...p, phase: 'confirmed' }));
           toast({
             title: 'Release Finalized',
             description: `Confirmed in ${state.status.confirmations} blocks. Escrow marked as completed.`,
@@ -142,6 +143,7 @@ export const EscrowDetail: React.FC = () => {
         } else if (pendingFinalize === 'refund') {
           const updated = await escrowApi.confirmRefund(escrow.id);
           setEscrow(updated as DbEscrow);
+          setTxPanel((p) => ({ ...p, phase: 'confirmed' }));
           toast({
             title: 'Refund Finalized',
             description: `Confirmed in ${state.status.confirmations} blocks. Escrow marked as refunded.`,
