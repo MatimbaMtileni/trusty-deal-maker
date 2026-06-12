@@ -820,6 +820,21 @@ export const EscrowDetail: React.FC = () => {
               </p>
             </div>
 
+            {/* Lifecycle panel: Built → Signed → Submitted → Confirmed */}
+            <TxStatusPanel
+              kind={txPanel.kind}
+              phase={txPanel.phase}
+              txHash={txPanel.txHash}
+              error={txPanel.error}
+              confirmations={txConfirmation.state?.status.confirmations ?? 0}
+              requiredConfirmations={requiredConfirmations}
+              onClose={() => {
+                setTxPanel({ kind: txPanel.kind, phase: 'idle' });
+                txConfirmation.reset();
+                setPendingFinalize(null);
+              }}
+            />
+
             {/* Confirmation tracker — shown while a release/refund tx is awaiting N confirmations */}
             {txConfirmation.state && (txConfirmation.isTracking || pendingFinalize) && (
               <TxConfirmationCard
