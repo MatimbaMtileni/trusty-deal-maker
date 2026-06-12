@@ -483,6 +483,7 @@ export const EscrowDetail: React.FC = () => {
         setEscrow(prev => prev ? { ...prev, seller_user_id: user.id } : prev);
       }
 
+      setTxPanel({ kind: 'release', phase: 'built', txHash: null, error: null });
       toast({
         title: 'Wallet Authorization Required',
         description: 'Please approve the release co-signing in your wallet (Step 2 of 2)...',
@@ -497,6 +498,8 @@ export const EscrowDetail: React.FC = () => {
       if (!result.success || !result.txHash) {
         throw new Error(result.error || 'Transaction failed');
       }
+
+      setTxPanel({ kind: 'release', phase: 'signed', txHash: result.txHash, error: null });
 
       // Record submission only — DO NOT mark as completed yet.
       // Status flips to `completed` after N confirmations (see useTxConfirmation).
@@ -521,6 +524,7 @@ export const EscrowDetail: React.FC = () => {
 
       // Start polling Blockfrost. Status flip happens in onConfirmed.
       setPendingFinalize('release');
+      setTxPanel({ kind: 'release', phase: 'submitted', txHash: result.txHash, error: null });
       txConfirmation.track(result.txHash).catch((err) => {
         console.error('[release] confirmation tracking failed:', err);
       });
@@ -532,10 +536,12 @@ export const EscrowDetail: React.FC = () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        setTxPanel({ kind: 'release', phase: 'idle' });
         toast({ variant: 'destructive', title: 'Transaction Cancelled', description: 'You cancelled the wallet authorization' });
         setIsProcessing(false);
         return;
       }
+      setTxPanel((p) => ({ ...p, kind: 'release', phase: 'error', error: errorMessage }));
       toast({ variant: 'destructive', title: 'Co-sign Failed', description: errorMessage });
     } finally {
       setIsProcessing(false);
