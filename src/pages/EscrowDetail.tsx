@@ -448,6 +448,7 @@ export const EscrowDetail: React.FC = () => {
         },
       }).catch((err) => console.warn('Email notification failed (non-blocking):', err));
 
+      setTxPanel({ kind: 'release', phase: 'signed', txHash: null, error: null });
       toast({
         title: 'Release Initiated!',
         description: 'Waiting for the seller to co-sign. They will see a "Co-sign Release" button.',
@@ -455,10 +456,12 @@ export const EscrowDetail: React.FC = () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        setTxPanel({ kind: 'release', phase: 'idle' });
         toast({ variant: 'destructive', title: 'Transaction Cancelled', description: 'You cancelled the wallet authorization' });
         setIsProcessing(false);
         return;
       }
+      setTxPanel({ kind: 'release', phase: 'error', error: errorMessage });
       toast({ variant: 'destructive', title: 'Release Failed', description: errorMessage });
     } finally {
       setIsProcessing(false);
