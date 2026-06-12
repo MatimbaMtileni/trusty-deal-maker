@@ -553,6 +553,7 @@ export const EscrowDetail: React.FC = () => {
     
     setIsProcessing(true);
     try {
+      setTxPanel({ kind: 'refund', phase: 'built', txHash: null, error: null });
       toast({
         title: 'Wallet Authorization Required',
         description: 'Please approve the refund in your wallet...',
@@ -570,6 +571,8 @@ export const EscrowDetail: React.FC = () => {
         throw new Error(result.error || 'Transaction failed');
       }
 
+      setTxPanel({ kind: 'refund', phase: 'signed', txHash: result.txHash, error: null });
+
       const { transaction } = await escrowApi.recordRefundSubmission({
         escrow_id: displayEscrow.id,
         tx_hash: result.txHash,
@@ -580,6 +583,7 @@ export const EscrowDetail: React.FC = () => {
 
       // Wait for N confirmations before flipping status to `refunded`.
       setPendingFinalize('refund');
+      setTxPanel({ kind: 'refund', phase: 'submitted', txHash: result.txHash, error: null });
       txConfirmation.track(result.txHash).catch((err) => {
         console.error('[refund] confirmation tracking failed:', err);
       });
@@ -590,8 +594,9 @@ export const EscrowDetail: React.FC = () => {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-       
+
       if (errorMessage.includes('rejected') || errorMessage.includes('declined') || errorMessage.includes('cancel') || errorMessage.includes('refuse')) {
+        setTxPanel({ kind: 'refund', phase: 'idle' });
         toast({
           variant: 'destructive',
           title: 'Transaction Cancelled',
@@ -600,7 +605,8 @@ export const EscrowDetail: React.FC = () => {
         setIsProcessing(false);
         return;
       }
-       
+
+      setTxPanel({ kind: 'refund', phase: 'error', error: errorMessage });
       toast({
         variant: 'destructive',
         title: 'Refund Failed',
