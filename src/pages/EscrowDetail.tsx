@@ -118,6 +118,12 @@ export const EscrowDetail: React.FC = () => {
   }, [escrow]);
 
   const [pendingFinalize, setPendingFinalize] = useState<null | 'release' | 'refund'>(null);
+  const [txPanel, setTxPanel] = useState<{
+    kind: 'release' | 'refund';
+    phase: 'idle' | 'built' | 'signed' | 'submitted' | 'confirmed' | 'error';
+    txHash?: string | null;
+    error?: string | null;
+  }>({ kind: 'release', phase: 'idle' });
 
   const txConfirmation = useTxConfirmation({
     requiredConfirmations,
