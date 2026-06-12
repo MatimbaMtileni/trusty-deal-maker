@@ -86,7 +86,7 @@ export const TxStatusPanel: React.FC<TxStatusPanelProps> = ({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            onClick={() => window.open(getExplorerUrl(txHash, 'tx'), '_blank')}
+            onClick={() => window.open(getExplorerUrl(txHash, 'tx' as const), '_blank')}
             title="View on explorer"
           >
             <ExternalLink className="h-4 w-4" />
