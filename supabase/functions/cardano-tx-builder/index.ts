@@ -63,13 +63,23 @@ function toHex(bytes: Uint8Array): string {
 }
 
 async function initLucid(): Promise<Lucid> {
-  return await Lucid.new(
-    new Blockfrost(
-      "https://cardano-preprod.blockfrost.io/api/v0",
-      BLOCKFROST_API_KEY!,
-    ),
-    "Preprod",
+  const blockfrost = new Blockfrost(
+    "https://cardano-preprod.blockfrost.io/api/v0",
+    BLOCKFROST_API_KEY!,
   );
+
+  // Patch: Lucid 0.10.11 only knows up to Plutus V2 cost-model length 166.
+  // Conway/Plutus V3 params returned by Blockfrost overflow this and throw
+  // "CostModel operation 166 out of bounds". We only use native scripts,
+  // so we can safely strip Plutus cost models to empty arrays.
+  const origGetParams = blockfrost.getProtocolParameters.bind(blockfrost);
+  blockfrost.getProtocolParameters = async () => {
+    const p = await origGetParams();
+    p.costModels = { PlutusV1: [], PlutusV2: [] } as any;
+    return p;
+  };
+
+  return await Lucid.new(blockfrost, "Preprod");
 }
 
 function getPkh(lucid: Lucid, address: string): string {
