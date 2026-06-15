@@ -211,6 +211,7 @@ export async function executeEscrowRefund(
     deadline: Date;
     escrowUtxoTxHash: string;
     escrowUtxoIndex: number;
+    expectedScriptAddress?: string;
   }
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   return executeSpend(walletApi, params, 'buildRefundTx');
@@ -228,6 +229,7 @@ async function executeSpend(
     deadline: Date;
     escrowUtxoTxHash: string;
     escrowUtxoIndex: number;
+    expectedScriptAddress?: string;
   },
   action: 'buildReleaseTx' | 'buildRefundTx'
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
@@ -241,6 +243,7 @@ async function executeSpend(
       escrowUtxoTxHash: params.escrowUtxoTxHash,
       escrowUtxoIndex: params.escrowUtxoIndex,
       deadlineSlot,
+      expectedScriptAddress: params.expectedScriptAddress,
     });
 
     if (!buildResult.success || !buildResult.txCbor) {
