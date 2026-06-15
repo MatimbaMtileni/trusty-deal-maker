@@ -568,6 +568,7 @@ export const EscrowDetail: React.FC = () => {
         deadline: new Date(escrow.deadline),
         escrowUtxoTxHash: escrow.utxo_tx_hash || '',
         escrowUtxoIndex: escrow.utxo_output_index ?? 0,
+        expectedScriptAddress: escrow.script_address || undefined,
       });
 
       if (!result.success || !result.txHash) {
