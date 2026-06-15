@@ -41,6 +41,7 @@ interface SpendRequest {
   escrowUtxoTxHash: string;
   escrowUtxoIndex: number;
   deadlineSlot: number;
+  expectedScriptAddress?: string;
 }
 
 type TxRequest = FundRequest | SpendRequest;
