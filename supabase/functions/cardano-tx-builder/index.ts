@@ -267,7 +267,7 @@ async function buildSpendTx(lucid: Lucid, params: SpendRequest, kind: "release" 
     const PREPROD_SHELLEY_START_SLOT = 86400;
     const deadlineMs =
       PREPROD_SHELLEY_START_UNIX_MS +
-      (deadlineSlot - PREPROD_SHELLEY_START_SLOT) * 1000;
+      (effectiveSlot - PREPROD_SHELLEY_START_SLOT) * 1000;
     txBuilder = txBuilder.addSigner(buyerAddress).validFrom(deadlineMs);
   }
 
