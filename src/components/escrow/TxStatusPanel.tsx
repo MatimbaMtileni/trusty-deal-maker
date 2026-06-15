@@ -3,7 +3,7 @@
 // transaction: Built → Signed → Submitted → Confirmed.
 // ============================================================================
 
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Wrench,
@@ -13,6 +13,8 @@ import {
   Loader2,
   AlertCircle,
   ExternalLink,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -53,6 +55,8 @@ export const TxStatusPanel: React.FC<TxStatusPanelProps> = ({
   error,
   onClose,
 }) => {
+  const [copied, setCopied] = useState(false);
+
   if (phase === 'idle') return null;
 
   const current = phaseIndex(phase);
@@ -63,6 +67,13 @@ export const TxStatusPanel: React.FC<TxStatusPanelProps> = ({
       : phase === 'submitted'
         ? Math.min(99, Math.round((confirmations / Math.max(1, requiredConfirmations)) * 100))
         : 0;
+
+  const handleCopy = () => {
+    if (!txHash) return;
+    navigator.clipboard.writeText(txHash);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <motion.div
@@ -81,17 +92,6 @@ export const TxStatusPanel: React.FC<TxStatusPanelProps> = ({
                 : `In progress · ${STEPS[Math.max(0, current)]?.hint}`}
           </p>
         </div>
-        {txHash && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => window.open(getExplorerUrl('tx', txHash), '_blank')}
-            title="View on explorer"
-          >
-            <ExternalLink className="h-4 w-4" />
-          </Button>
-        )}
       </div>
 
       {/* Stepper */}
@@ -101,6 +101,7 @@ export const TxStatusPanel: React.FC<TxStatusPanelProps> = ({
           const isDone = phase !== 'error' && idx < current;
           const isActive = phase !== 'error' && idx === current;
           const isFinalDone = phase === 'confirmed' && idx === STEPS.length - 1;
+          const showExplorer = txHash && (isDone || isActive || isFinalDone) && (step.id === 'submitted' || step.id === 'confirmed');
 
           return (
             <li key={step.id} className="flex flex-col items-center text-center gap-2">
@@ -127,6 +128,16 @@ export const TxStatusPanel: React.FC<TxStatusPanelProps> = ({
               >
                 {step.label}
               </span>
+              {showExplorer && (
+                <button
+                  onClick={() => window.open(getExplorerUrl('tx', txHash), '_blank')}
+                  className="flex items-center gap-1 text-[10px] text-primary hover:underline"
+                  title="View on explorer"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Explorer
+                </button>
+              )}
             </li>
           );
         })}
@@ -158,11 +169,35 @@ export const TxStatusPanel: React.FC<TxStatusPanelProps> = ({
         </div>
       )}
 
-      {/* Tx hash */}
+      {/* Tx hash row */}
       {txHash && (
-        <p className="text-[11px] text-muted-foreground font-mono break-all">
-          {txHash}
-        </p>
+        <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
+          <span className="text-[11px] text-muted-foreground font-mono truncate flex-1">
+            {txHash}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={handleCopy}
+            title="Copy transaction hash"
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-success" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 text-[11px] shrink-0"
+            onClick={() => window.open(getExplorerUrl('tx', txHash), '_blank')}
+          >
+            <ExternalLink className="h-3 w-3" />
+            View on Explorer
+          </Button>
+        </div>
       )}
 
       {/* Error */}
