@@ -122,6 +122,7 @@ export async function initiateEscrowRelease(
     deadline: Date;
     escrowUtxoTxHash: string;
     escrowUtxoIndex: number;
+    expectedScriptAddress?: string;
   }
 ): Promise<{ success: boolean; unsignedTxCbor?: string; buyerWitness?: string; scriptWitness?: string; error?: string }> {
   try {
@@ -134,6 +135,7 @@ export async function initiateEscrowRelease(
       escrowUtxoTxHash: params.escrowUtxoTxHash,
       escrowUtxoIndex: params.escrowUtxoIndex,
       deadlineSlot,
+      expectedScriptAddress: params.expectedScriptAddress,
     });
 
     if (!buildResult.success || !buildResult.txCbor) {
