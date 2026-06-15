@@ -75,6 +75,7 @@ interface DbEscrow {
    requires_multi_sig?: boolean;
    buyer_signed_at?: string | null;
    seller_signed_at?: string | null;
+   script_address?: string | null;
 }
 
 interface PendingRelease {
