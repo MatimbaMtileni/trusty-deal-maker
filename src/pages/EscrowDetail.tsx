@@ -75,6 +75,7 @@ interface DbEscrow {
    requires_multi_sig?: boolean;
    buyer_signed_at?: string | null;
    seller_signed_at?: string | null;
+   script_address?: string | null;
 }
 
 interface PendingRelease {
@@ -404,6 +405,7 @@ export const EscrowDetail: React.FC = () => {
         deadline: new Date(escrow.deadline),
         escrowUtxoTxHash: escrow.utxo_tx_hash || '',
         escrowUtxoIndex: escrow.utxo_output_index ?? 0,
+        expectedScriptAddress: escrow.script_address || undefined,
       });
 
       if (!result.success || !result.unsignedTxCbor || !result.buyerWitness) {
@@ -566,6 +568,7 @@ export const EscrowDetail: React.FC = () => {
         deadline: new Date(escrow.deadline),
         escrowUtxoTxHash: escrow.utxo_tx_hash || '',
         escrowUtxoIndex: escrow.utxo_output_index ?? 0,
+        expectedScriptAddress: escrow.script_address || undefined,
       });
 
       if (!result.success || !result.txHash) {
