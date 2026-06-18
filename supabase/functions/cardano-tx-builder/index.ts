@@ -124,6 +124,51 @@ function deriveScriptAddress(lucid: Lucid, buyerPkh: string, sellerPkh: string, 
   return { script, address };
 }
 
+const LEGACY_PREPROD_SLOT_OFFSET = 1_555_200;
+const SCRIPT_RECONSTRUCT_SEARCH_RADIUS = 7_200;
+
+function reconstructExpectedScript(
+  lucid: Lucid,
+  buyerPkh: string,
+  sellerPkh: string,
+  deadlineSlot: number,
+  expectedScriptAddress?: string,
+): { script: Script; address: string; effectiveSlot: number; source: string } {
+  const centers = [
+    { slot: deadlineSlot, source: "current" },
+    // Older funded escrows used an incorrect Preprod genesis anchor in the
+    // frontend slot conversion. Their scripts are still valid on-chain, so
+    // spend reconstruction must try that historical slot as well.
+    { slot: deadlineSlot + LEGACY_PREPROD_SLOT_OFFSET, source: "legacy-preprod-genesis" },
+  ];
+
+  for (const { slot, source } of centers) {
+    const derived = deriveScriptAddress(lucid, buyerPkh, sellerPkh, slot);
+    if (!expectedScriptAddress || derived.address === expectedScriptAddress) {
+      return { ...derived, effectiveSlot: slot, source };
+    }
+  }
+
+  if (expectedScriptAddress) {
+    for (const { slot: centerSlot, source } of centers) {
+      for (let delta = 1; delta <= SCRIPT_RECONSTRUCT_SEARCH_RADIUS; delta++) {
+        for (const sign of [-1, 1]) {
+          const trySlot = centerSlot + sign * delta;
+          const tryDerived = deriveScriptAddress(lucid, buyerPkh, sellerPkh, trySlot);
+          if (tryDerived.address === expectedScriptAddress) {
+            return { ...tryDerived, effectiveSlot: trySlot, source: `${source}${sign < 0 ? "-" : "+"}${delta}` };
+          }
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    `Could not reconstruct script for expected address ${expectedScriptAddress} ` +
+    `(searched current and legacy Preprod slots around ${deadlineSlot}). Buyer/seller addresses may have changed.`
+  );
+}
+
 /* ============================================================================
    HANDLER
 ============================================================================ */
