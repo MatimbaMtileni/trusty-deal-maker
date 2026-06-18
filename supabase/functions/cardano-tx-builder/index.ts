@@ -245,38 +245,15 @@ async function buildSpendTx(lucid: Lucid, params: SpendRequest, kind: "release" 
 
   const buyerPkh = getPkh(lucid, buyerAddress);
   const sellerPkh = getPkh(lucid, sellerAddress);
-  let { script, address: scriptAddress } = deriveScriptAddress(lucid, buyerPkh, sellerPkh, deadlineSlot);
-  let effectiveSlot = deadlineSlot;
+  const { script, address: scriptAddress, effectiveSlot, source } = reconstructExpectedScript(
+    lucid,
+    buyerPkh,
+    sellerPkh,
+    deadlineSlot,
+    expectedScriptAddress,
+  );
 
-  // If the caller knows the on-chain script address (from when fund tx was built)
-  // and our re-derived address doesn't match, search nearby slot values to find
-  // the slot that was actually used at funding time (handles ms-truncation /
-  // timezone rounding drift between fund and spend calls).
-  if (expectedScriptAddress && scriptAddress !== expectedScriptAddress) {
-    let matched = false;
-    for (let delta = 1; delta <= 7200 && !matched; delta++) {
-      for (const sign of [-1, 1]) {
-        const trySlot = deadlineSlot + sign * delta;
-        const tryDerived = deriveScriptAddress(lucid, buyerPkh, sellerPkh, trySlot);
-        if (tryDerived.address === expectedScriptAddress) {
-          script = tryDerived.script;
-          scriptAddress = tryDerived.address;
-          effectiveSlot = trySlot;
-          matched = true;
-          break;
-        }
-      }
-    }
-    if (!matched) {
-      throw new Error(
-        `Could not reconstruct script for expected address ${expectedScriptAddress} ` +
-        `(searched ±7200 slots around ${deadlineSlot}). Buyer/seller addresses may have changed.`
-      );
-    }
-    console.log(`[buildSpendTx:${kind}] reconstructed script at slot ${effectiveSlot} (drift ${effectiveSlot - deadlineSlot})`);
-  }
-
-  console.log(`[buildSpendTx:${kind}]`, { scriptAddress, utxo: `${escrowUtxoTxHash}#${escrowUtxoIndex}`, effectiveSlot });
+  console.log(`[buildSpendTx:${kind}]`, { scriptAddress, utxo: `${escrowUtxoTxHash}#${escrowUtxoIndex}`, effectiveSlot, source });
 
   // Fetch UTxOs at script address
   const utxos: UTxO[] = await lucid.utxosAt(scriptAddress);
