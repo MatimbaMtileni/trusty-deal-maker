@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,13 +15,20 @@ export const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { signIn, signUp, session } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
+
+  // Consume ?next=... only when it is a same-origin relative path.
+  const rawNext = searchParams.get('next');
+  const nextPath =
+    rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null;
+  const postAuthTarget = nextPath ?? '/dashboard';
 
   useEffect(() => {
     if (session) {
-      navigate('/dashboard', { replace: true });
+      navigate(postAuthTarget, { replace: true });
     }
-  }, [navigate, session]);
+  }, [navigate, session, postAuthTarget]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +60,7 @@ export const Auth: React.FC = () => {
             ? 'Your account has been created successfully.' 
             : 'You have been signed in.',
         });
-        navigate('/dashboard');
+        navigate(postAuthTarget);
       }
     } catch (err) {
       toast({
